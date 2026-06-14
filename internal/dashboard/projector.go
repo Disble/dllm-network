@@ -103,12 +103,13 @@ type HealthState struct {
 }
 
 type PassiveLimitMode struct {
-	Mode                         string   `json:"mode"`
-	ExactRequestLatencyAvailable bool     `json:"exactRequestLatencyAvailable"`
-	ExactTokenCountsAvailable    bool     `json:"exactTokenCountsAvailable"`
-	ExactPayloadAvailable        bool     `json:"exactPayloadAvailable"`
-	ExactStatusAvailable         bool     `json:"exactStatusAvailable"`
-	Notes                        []string `json:"notes"`
+	Mode                          string   `json:"mode"`
+	ExactRequestLatencyAvailable  bool     `json:"exactRequestLatencyAvailable"`
+	ExactTokenCountsAvailable     bool     `json:"exactTokenCountsAvailable"`
+	ExactPayloadAvailable         bool     `json:"exactPayloadAvailable"`
+	ExactStatusAvailable          bool     `json:"exactStatusAvailable"`
+	ExactStreamingChunksAvailable bool     `json:"exactStreamingChunksAvailable"`
+	Notes                         []string `json:"notes"`
 }
 
 type Projector struct {
@@ -244,16 +245,18 @@ func systemHealth(meta system.SnapshotMeta) HealthState {
 
 func passiveMode() PassiveLimitMode {
 	return PassiveLimitMode{
-		Mode:                         "passive-only",
-		ExactRequestLatencyAvailable: false,
-		ExactTokenCountsAvailable:    false,
-		ExactPayloadAvailable:        false,
-		ExactStatusAvailable:         false,
+		Mode:                          "passive-only",
+		ExactRequestLatencyAvailable:  false,
+		ExactTokenCountsAvailable:     false,
+		ExactPayloadAvailable:         false,
+		ExactStatusAvailable:          false,
+		ExactStreamingChunksAvailable: false,
 		Notes: []string{
 			"Exact request latency is unavailable in passive mode.",
 			"Exact token counts are unavailable in passive mode.",
 			"Exact request and response payloads are unavailable in passive mode.",
 			"Exact HTTP status results are unavailable in passive mode.",
+			"Exact streaming chunks are unavailable in passive mode.",
 		},
 	}
 }

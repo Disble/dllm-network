@@ -101,8 +101,11 @@ func TestProjectorProjectsConfirmedAndInferredSnapshot(t *testing.T) {
 	if snapshot.Passive.ExactRequestLatencyAvailable {
 		t.Fatal("expected passive snapshot to keep exact request latency unavailable")
 	}
-	if len(snapshot.Passive.Notes) != 4 {
-		t.Fatalf("expected four passive limitation notes, got %d", len(snapshot.Passive.Notes))
+	if snapshot.Passive.ExactStreamingChunksAvailable {
+		t.Fatal("expected passive snapshot to keep exact streaming chunks unavailable")
+	}
+	if len(snapshot.Passive.Notes) != 5 {
+		t.Fatalf("expected five passive limitation notes, got %d", len(snapshot.Passive.Notes))
 	}
 }
 

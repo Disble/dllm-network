@@ -17,6 +17,7 @@ describe('DashboardPanel', () => {
     expect(screen.getByText('Inferred activity')).toBeTruthy();
     expect(screen.getByText('Passive limits')).toBeTruthy();
     expect(screen.getByText('Exact request latency is unavailable in passive mode.')).toBeTruthy();
+    expect(screen.getByText('Exact streaming chunks are unavailable in passive mode.')).toBeTruthy();
     expect(screen.getByText('high confidence')).toBeTruthy();
     expect(screen.getByText('mistral')).toBeTruthy();
   });
@@ -83,11 +84,13 @@ function createSnapshot(): DashboardSnapshot {
       exactTokenCountsAvailable: false,
       exactPayloadAvailable: false,
       exactStatusAvailable: false,
+      exactStreamingChunksAvailable: false,
       notes: [
         'Exact request latency is unavailable in passive mode.',
         'Exact token counts are unavailable in passive mode.',
         'Exact request and response payloads are unavailable in passive mode.',
         'Exact HTTP status results are unavailable in passive mode.',
+        'Exact streaming chunks are unavailable in passive mode.',
       ],
     },
   };

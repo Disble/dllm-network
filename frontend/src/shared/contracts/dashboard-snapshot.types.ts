@@ -144,5 +144,6 @@ export interface PassiveState {
   readonly exactTokenCountsAvailable: boolean;
   readonly exactPayloadAvailable: boolean;
   readonly exactStatusAvailable: boolean;
+  readonly exactStreamingChunksAvailable: boolean;
   readonly notes: readonly string[];
 }

@@ -16,6 +16,7 @@ describe('createDashboardViewModel', () => {
       'Exact token counts are unavailable in passive mode.',
       'Exact request and response payloads are unavailable in passive mode.',
       'Exact HTTP status results are unavailable in passive mode.',
+      'Exact streaming chunks are unavailable in passive mode.',
     ]);
     expect(viewModel.primaryModelValue).toBe('mistral');
     expect(viewModel.stalenessLabel).toBe('Fresh passive snapshot');
@@ -95,11 +96,13 @@ function createSnapshot(overrides?: Partial<DashboardSnapshot>): DashboardSnapsh
       exactTokenCountsAvailable: false,
       exactPayloadAvailable: false,
       exactStatusAvailable: false,
+      exactStreamingChunksAvailable: false,
       notes: [
         'Exact request latency is unavailable in passive mode.',
         'Exact token counts are unavailable in passive mode.',
         'Exact request and response payloads are unavailable in passive mode.',
         'Exact HTTP status results are unavailable in passive mode.',
+        'Exact streaming chunks are unavailable in passive mode.',
       ],
     },
   };

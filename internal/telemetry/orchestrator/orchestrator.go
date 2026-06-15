@@ -24,6 +24,12 @@ type Orchestrator struct {
 	processCollector    ProcessCollector
 	connectionCollector ConnectionCollector
 	hostCollector       HostCollector
+	poller              OllamaPoller
+	publisher           SnapshotPublisher
+	now                 func() time.Time
+	newTicker           func(time.Duration) loopTicker
+	loopCancel          context.CancelFunc
+	loopDone            chan struct{}
 }
 
 func New(config telemetry.Config) *Orchestrator {
@@ -46,6 +52,10 @@ type Dependencies struct {
 	ProcessCollector    ProcessCollector
 	ConnectionCollector ConnectionCollector
 	HostCollector       HostCollector
+	Poller              OllamaPoller
+	Publisher           SnapshotPublisher
+	Now                 func() time.Time
+	NewTicker           func(time.Duration) loopTicker
 }
 
 type SystemSnapshot struct {
@@ -71,13 +81,55 @@ func NewWithDependencies(config telemetry.Config, deps Dependencies) *Orchestrat
 		hostCollector = system.NewHostCollector(nil, nil)
 	}
 
+	poller := deps.Poller
+	if poller == nil {
+		poller = noopOllamaPoller{}
+	}
+
+	now := deps.Now
+	if now == nil {
+		now = time.Now
+	}
+
+	newTicker := deps.NewTicker
+	if newTicker == nil {
+		newTicker = func(interval time.Duration) loopTicker {
+			return newTimeTicker(interval)
+		}
+	}
+
 	return &Orchestrator{
 		state:               StateRunning,
 		config:              config.WithDefaults(),
 		processCollector:    processCollector,
 		connectionCollector: connectionCollector,
 		hostCollector:       hostCollector,
+		poller:              poller,
+		publisher:           deps.Publisher,
+		now:                 now,
+		newTicker:           newTicker,
 	}
+}
+
+func (orchestrator *Orchestrator) Start(ctx context.Context) error {
+	orchestrator.mu.Lock()
+	defer orchestrator.mu.Unlock()
+
+	if orchestrator.state == StateStopped || orchestrator.loopDone != nil {
+		return nil
+	}
+
+	loopCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	ticker := orchestrator.newTicker(smallestCadence(orchestrator.config.Cadence))
+	loop := newRuntimeLoop(orchestrator, ticker, done)
+
+	orchestrator.loopCancel = cancel
+	orchestrator.loopDone = done
+
+	go loop.run(loopCtx)
+
+	return nil
 }
 
 func (orchestrator *Orchestrator) Pause(context.Context) error {
@@ -104,11 +156,29 @@ func (orchestrator *Orchestrator) Resume(context.Context) error {
 	return nil
 }
 
-func (orchestrator *Orchestrator) Stop(context.Context) error {
+func (orchestrator *Orchestrator) Stop(ctx context.Context) error {
 	orchestrator.mu.Lock()
-	defer orchestrator.mu.Unlock()
-
 	orchestrator.state = StateStopped
+	cancel := orchestrator.loopCancel
+	done := orchestrator.loopDone
+	orchestrator.loopCancel = nil
+	orchestrator.loopDone = nil
+	orchestrator.mu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+
+	if done == nil {
+		return nil
+	}
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
 	return nil
 }
 

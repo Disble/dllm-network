@@ -1,43 +1,46 @@
-import { act, renderHook } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { createElement } from 'react';
+import { act, cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import type { DashboardSnapshotSource } from '../../../infrastructure/dashboard-snapshot-source';
 import { EMPTY_DASHBOARD_SNAPSHOT } from '../../../shared/contracts/dashboard-snapshot.constants';
 import type { DashboardSnapshot } from '../../../shared/contracts/dashboard-snapshot.types';
-import { useDashboardSnapshot } from '../use-dashboard-snapshot';
+import { DashboardScreen } from '../dashboard-screen';
 
-describe('useDashboardSnapshot', () => {
-  it('keeps the passive-safe empty snapshot before the first runtime event arrives', () => {
+afterEach(() => {
+  cleanup();
+});
+
+describe('DashboardScreen', () => {
+  it('renders the passive-safe empty view before the first dashboard snapshot event', () => {
     const controller = createSourceController(EMPTY_DASHBOARD_SNAPSHOT);
-    const { result } = renderHook(() =>
-      useDashboardSnapshot({
-        source: controller.source,
-        initialSnapshot: EMPTY_DASHBOARD_SNAPSHOT,
-      }),
-    );
 
-    expect(result.current.confirmed.ollama.primaryModel).toBe('');
-    expect(result.current.inferred.current.kind).toBe('inferred-unknown');
-    expect(result.current.passive.exactRequestLatencyAvailable).toBe(false);
+    render(createElement(DashboardScreen, { source: controller.source, now: new Date('2026-06-15T00:03:30Z') }));
+
+    expect(screen.getByText('No confirmed running model')).toBeTruthy();
+    expect(screen.getByText('Stale passive snapshot')).toBeTruthy();
+    expect(screen.getByText('No confirmed model history yet.')).toBeTruthy();
+    expect(screen.getByText(hasExactText('Published Unavailable'))).toBeTruthy();
+    expect(screen.getByText(hasExactText('Ollama version: Unavailable'))).toBeTruthy();
+    expect(screen.getByText(hasExactText('Observed: Unavailable'))).toBeTruthy();
   });
 
-  it('subscribes to the source and updates when a new passive snapshot arrives', () => {
+  it('re-renders when a dashboard:snapshot event delivers a live passive snapshot', () => {
     const controller = createSourceController(EMPTY_DASHBOARD_SNAPSHOT);
-    const { result } = renderHook(() =>
-      useDashboardSnapshot({
-        source: controller.source,
-        initialSnapshot: EMPTY_DASHBOARD_SNAPSHOT,
-      }),
-    );
 
-    expect(result.current.confirmed.ollama.primaryModel).toBe('');
+    render(createElement(DashboardScreen, { source: controller.source, now: new Date('2026-06-15T00:00:30Z') }));
+
+    expect(screen.getByText('No confirmed running model')).toBeTruthy();
 
     act(() => {
       controller.emit(createSnapshot('mistral', 'inferred-model-changed'));
     });
 
-    expect(result.current.confirmed.ollama.primaryModel).toBe('mistral');
-    expect(result.current.inferred.current.kind).toBe('inferred-model-changed');
+    expect(screen.getByText('mistral')).toBeTruthy();
+    expect(screen.getByText('Fresh passive snapshot')).toBeTruthy();
+    expect(screen.getByText('inferred-model-changed • mistral')).toBeTruthy();
+    expect(screen.getByText('confirmed running model: mistral')).toBeTruthy();
+    expect(screen.queryByText('No confirmed running model')).toBeNull();
   });
 });
 
@@ -137,3 +140,6 @@ const createSnapshot = (model: string, kind: DashboardSnapshot['inferred']['curr
     ],
   },
 });
+
+const hasExactText = (expected: string) => (_content: string, element: { textContent: string | null } | null) =>
+  element?.textContent === expected;

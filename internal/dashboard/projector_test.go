@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -193,6 +194,50 @@ func TestPublisherEmitsProjectedSnapshotThroughEmitter(t *testing.T) {
 	}
 }
 
+func TestPublisherReturnsEmitterErrorAfterAttemptingSnapshotPublish(t *testing.T) {
+	t.Parallel()
+
+	publishedAt := time.Date(2026, time.June, 15, 0, 12, 0, 0, time.UTC)
+	emitter := &stubEmitter{err: errors.New("emit failed")}
+	publisher := NewPublisher(
+		NewProjector(func() time.Time { return publishedAt }),
+		stubRecentReader{},
+		emitter,
+	)
+
+	snapshot, err := publisher.Publish(context.Background(), ProjectionInput{
+		Ollama: ollama.PollSnapshot{
+			Meta:    ollama.SnapshotMeta{ObservedAt: publishedAt, Status: ollama.StatusConfirmed, Reachable: true},
+			Running: ollama.RunningModelsSnapshot{Models: []ollama.RunningModel{{Model: "phi4-mini"}}},
+		},
+		System: orchestrator.SystemSnapshot{
+			CollectedAt: publishedAt,
+			Process:     system.ProcessSnapshot{Meta: system.SnapshotMeta{ObservedAt: publishedAt, Status: system.StatusConfirmed, Healthy: true, Reachable: true, Supported: true}},
+			Connections: system.ConnectionsSnapshot{Meta: system.SnapshotMeta{ObservedAt: publishedAt, Status: system.StatusConfirmed, Healthy: true, Reachable: true, Supported: true}},
+			Host:        system.HostSnapshot{Meta: system.SnapshotMeta{ObservedAt: publishedAt, Status: system.StatusConfirmed, Healthy: true, Reachable: true, Supported: true}},
+		},
+	})
+	if err == nil || err.Error() != "emit failed" {
+		t.Fatalf("expected emitter error, got %v", err)
+	}
+	if !snapshot.PublishedAt.IsZero() || snapshot.Confirmed.Ollama.PrimaryModel != "" || len(snapshot.Passive.Notes) != 0 {
+		t.Fatalf("expected publish to return zero-value snapshot on emitter error, got %+v", snapshot)
+	}
+	if emitter.calls != 1 {
+		t.Fatalf("expected one emit attempt, got %d", emitter.calls)
+	}
+	if emitter.topic != TopicDashboardSnapshot {
+		t.Fatalf("expected topic %q, got %q", TopicDashboardSnapshot, emitter.topic)
+	}
+	payload, ok := emitter.payload.(Snapshot)
+	if !ok {
+		t.Fatalf("expected snapshot payload, got %T", emitter.payload)
+	}
+	if payload.Confirmed.Ollama.PrimaryModel != "phi4-mini" {
+		t.Fatalf("expected attempted payload to preserve projected model, got %+v", payload.Confirmed.Ollama)
+	}
+}
+
 type stubRecentReader struct {
 	snapshots  []store.Snapshot
 	activities []activity.Event
@@ -210,11 +255,12 @@ type stubEmitter struct {
 	calls   int
 	topic   string
 	payload any
+	err     error
 }
 
 func (emitter *stubEmitter) Emit(_ context.Context, topic string, payload any) error {
 	emitter.calls++
 	emitter.topic = topic
 	emitter.payload = payload
-	return nil
+	return emitter.err
 }

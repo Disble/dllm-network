@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"ollama-telemetry/internal/dashboard"
 	"ollama-telemetry/internal/telemetry"
 	"ollama-telemetry/internal/telemetry/orchestrator"
 )
@@ -84,8 +85,53 @@ func TestAppLifecyclePauseResume(t *testing.T) {
 		t.Fatalf("expected running status after resume, got %+v", got)
 	}
 
-	if !slices.Equal(controller.calls, []string{"pause", "resume"}) {
+	if !slices.Equal(controller.calls, []string{"start", "pause", "resume"}) {
 		t.Fatalf("expected pause and resume orchestration calls, got %v", controller.calls)
+	}
+}
+
+func TestAppStartupStartsRuntimeController(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name          string
+		controller    *fakeOrchestrator
+		expectedCalls []string
+	}{
+		{
+			name:          "startup starts runtime loop with startup context",
+			controller:    &fakeOrchestrator{state: orchestrator.StateRunning},
+			expectedCalls: []string{"start"},
+		},
+		{
+			name: "startup failure stays hidden and remains deterministic",
+			controller: &fakeOrchestrator{
+				state:    orchestrator.StateStopped,
+				startErr: errors.New("start failed"),
+			},
+			expectedCalls: []string{"start"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			window := &fakeWindow{}
+			app := newTestApp(window, tt.controller, time.Second)
+
+			startupCtx := context.WithValue(context.Background(), testContextKey("startup"), "ready")
+			app.Startup(startupCtx)
+
+			if !slices.Equal(tt.controller.calls, tt.expectedCalls) {
+				t.Fatalf("expected startup calls %v, got %v", tt.expectedCalls, tt.controller.calls)
+			}
+			if len(tt.controller.ctxValues) != 1 || tt.controller.ctxValues[0] != "ready" {
+				t.Fatalf("expected startup to forward startup context, got %v", tt.controller.ctxValues)
+			}
+			if got := app.Status(); got.WindowVisible {
+				t.Fatalf("expected startup to keep the window hidden, got %+v", got)
+			}
+			if len(window.calls) != 0 {
+				t.Fatalf("expected startup not to touch the window, got %v", window.calls)
+			}
+		})
 	}
 }
 
@@ -97,11 +143,7 @@ func TestAppQuitStopsCollectorsBeforeClosingWindow(t *testing.T) {
 		window := &fakeWindow{recorder: recorder}
 		controller := &fakeOrchestrator{state: orchestrator.StateRunning, recorder: recorder}
 		shutdownTimeout := 150 * time.Millisecond
-		app := NewWithDependencies(Dependencies{
-			Window:       window,
-			Orchestrator: controller,
-			Config:       telemetry.Config{ShutdownTimeout: shutdownTimeout},
-		})
+		app := newTestApp(window, controller, shutdownTimeout)
 		app.Startup(context.Background())
 
 		before := time.Now()
@@ -109,7 +151,7 @@ func TestAppQuitStopsCollectorsBeforeClosingWindow(t *testing.T) {
 			t.Fatalf("quit: %v", err)
 		}
 
-		if !slices.Equal(recorder.calls, []string{"stop", "quit"}) {
+		if !slices.Equal(recorder.calls, []string{"start", "stop", "quit"}) {
 			t.Fatalf("expected stop before quit, got %v", recorder.calls)
 		}
 
@@ -131,11 +173,7 @@ func TestAppQuitStopsCollectorsBeforeClosingWindow(t *testing.T) {
 			recorder: recorder,
 			stopErr:  errors.New("drain failed"),
 		}
-		app := NewWithDependencies(Dependencies{
-			Window:       window,
-			Orchestrator: controller,
-			Config:       telemetry.Config{ShutdownTimeout: time.Second},
-		})
+		app := newTestApp(window, controller, time.Second)
 		app.Startup(context.Background())
 
 		err := app.Quit()
@@ -143,9 +181,60 @@ func TestAppQuitStopsCollectorsBeforeClosingWindow(t *testing.T) {
 			t.Fatalf("expected stop failure to surface, got %v", err)
 		}
 
-		if !slices.Equal(recorder.calls, []string{"stop"}) {
+		if !slices.Equal(recorder.calls, []string{"start", "stop"}) {
 			t.Fatalf("expected quit to stop after orchestrator failure, got %v", recorder.calls)
 		}
+	})
+}
+
+func TestWailsEmitterEmitsDashboardSnapshotEvent(t *testing.T) {
+	t.Parallel()
+
+	called := 0
+	var gotCtxValue any
+	var gotEvent string
+	var gotPayload []any
+	emitter := wailsEmitter{
+		emit: func(ctx context.Context, event string, payload ...any) {
+			called++
+			gotCtxValue = ctx.Value(testContextKey("startup"))
+			gotEvent = event
+			gotPayload = append([]any(nil), payload...)
+		},
+	}
+	snapshot := dashboard.Snapshot{PublishedAt: time.Date(2026, time.June, 15, 1, 0, 0, 0, time.UTC)}
+	ctx := context.WithValue(context.Background(), testContextKey("startup"), "ready")
+
+	if err := emitter.Emit(ctx, dashboard.TopicDashboardSnapshot, snapshot); err != nil {
+		t.Fatalf("emit: %v", err)
+	}
+
+	if called != 1 {
+		t.Fatalf("expected one runtime event emission, got %d", called)
+	}
+	if gotCtxValue != "ready" {
+		t.Fatalf("expected emitter to forward startup context, got %v", gotCtxValue)
+	}
+	if gotEvent != dashboard.TopicDashboardSnapshot {
+		t.Fatalf("expected event %q, got %q", dashboard.TopicDashboardSnapshot, gotEvent)
+	}
+	if len(gotPayload) != 1 {
+		t.Fatalf("expected one payload item, got %d", len(gotPayload))
+	}
+	payload, ok := gotPayload[0].(dashboard.Snapshot)
+	if !ok {
+		t.Fatalf("expected dashboard snapshot payload, got %T", gotPayload[0])
+	}
+	if !payload.PublishedAt.Equal(snapshot.PublishedAt) {
+		t.Fatalf("expected publishedAt %s, got %s", snapshot.PublishedAt, payload.PublishedAt)
+	}
+}
+
+func newTestApp(window *fakeWindow, controller *fakeOrchestrator, timeout time.Duration) *App {
+	return NewWithDependencies(Dependencies{
+		Window:       window,
+		Orchestrator: controller,
+		Config:       telemetry.Config{ShutdownTimeout: timeout},
 	})
 }
 
@@ -182,9 +271,22 @@ func (window *fakeWindow) record(call string) {
 type fakeOrchestrator struct {
 	state        orchestrator.State
 	calls        []string
+	ctxValues    []any
 	recorder     *callRecorder
+	startErr     error
 	stopErr      error
 	stopDeadline time.Time
+}
+
+func (controller *fakeOrchestrator) Start(ctx context.Context) error {
+	controller.calls = append(controller.calls, "start")
+	controller.ctxValues = append(controller.ctxValues, ctx.Value(testContextKey("startup")))
+	controller.record("start")
+	if controller.startErr != nil {
+		return controller.startErr
+	}
+	controller.state = orchestrator.StateRunning
+	return nil
 }
 
 func (controller *fakeOrchestrator) Pause(context.Context) error {
@@ -201,9 +303,7 @@ func (controller *fakeOrchestrator) Resume(context.Context) error {
 
 func (controller *fakeOrchestrator) Stop(ctx context.Context) error {
 	controller.calls = append(controller.calls, "stop")
-	if controller.recorder != nil {
-		controller.recorder.calls = append(controller.recorder.calls, "stop")
-	}
+	controller.record("stop")
 	controller.stopDeadline, _ = ctx.Deadline()
 	if controller.stopErr != nil {
 		return controller.stopErr
@@ -214,6 +314,12 @@ func (controller *fakeOrchestrator) Stop(ctx context.Context) error {
 
 func (controller *fakeOrchestrator) State() orchestrator.State {
 	return controller.state
+}
+
+func (controller *fakeOrchestrator) record(call string) {
+	if controller.recorder != nil {
+		controller.recorder.calls = append(controller.recorder.calls, call)
+	}
 }
 
 type callRecorder struct {

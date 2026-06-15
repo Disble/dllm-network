@@ -4,10 +4,20 @@ import (
 	"context"
 	"sync"
 
+	"ollama-telemetry/internal/activity"
+	"ollama-telemetry/internal/dashboard"
+	"ollama-telemetry/internal/store"
 	"ollama-telemetry/internal/telemetry"
+	"ollama-telemetry/internal/telemetry/ollama"
 	"ollama-telemetry/internal/telemetry/orchestrator"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
+)
+
+const (
+	defaultOllamaBaseURL    = "http://127.0.0.1:11434"
+	defaultRecentModelLimit = 12
+	defaultRecentEventLimit = 12
 )
 
 type Window interface {
@@ -17,6 +27,7 @@ type Window interface {
 }
 
 type Orchestrator interface {
+	Start(context.Context) error
 	Pause(context.Context) error
 	Resume(context.Context) error
 	Stop(context.Context) error
@@ -53,7 +64,13 @@ func NewWithDependencies(deps Dependencies) *App {
 	config := deps.Config.WithDefaults()
 	orchestratorInstance := deps.Orchestrator
 	if orchestratorInstance == nil {
-		orchestratorInstance = orchestrator.New(config)
+		emitter := newWailsEmitter()
+		runtimePublisher := newRuntimePublisher(emitter)
+		poller := ollama.NewPoller(ollama.NewClient(defaultOllamaBaseURL, nil, nil), nil)
+		orchestratorInstance = orchestrator.NewWithDependencies(config, orchestrator.Dependencies{
+			Poller:    poller,
+			Publisher: runtimePublisher,
+		})
 	}
 
 	window := deps.Window
@@ -68,12 +85,14 @@ func NewWithDependencies(deps Dependencies) *App {
 	}
 }
 
-// Startup captures the Wails context for later tray and runtime work.
+// Startup captures the Wails context and starts the runtime loop.
 func (app *App) Startup(ctx context.Context) {
 	app.mu.Lock()
-	defer app.mu.Unlock()
 	app.ctx = ctx
 	app.visible = false
+	app.mu.Unlock()
+
+	_ = app.orchestrator.Start(ctx)
 }
 
 func (app *App) Show() error {
@@ -167,4 +186,9 @@ func (wailsWindow) Hide(ctx context.Context) {
 
 func (wailsWindow) Quit(ctx context.Context) {
 	wruntime.Quit(ctx)
+}
+
+func newRuntimePublisher(emitter dashboard.Emitter) orchestrator.SnapshotPublisher {
+	recent := store.NewRecent(defaultRecentModelLimit, defaultRecentEventLimit)
+	return newRuntimePublisherWithDependencies(activity.NewEngine(), recent, dashboard.NewPublisher(nil, recent, emitter))
 }

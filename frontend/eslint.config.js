@@ -32,7 +32,7 @@ export default [
   importX.flatConfigs.typescript,
   reactPlugin.configs.flat['jsx-runtime'],
   {
-    ignores: ['dist/*', 'scripts/*', 'coverage/*'],
+    ignores: ['dist/*', 'scripts/*', 'coverage/*', 'wailsjs/**/*'],
   },
   {
     files: ['**/*.{ts,tsx,js,jsx,mjs,cjs}'],

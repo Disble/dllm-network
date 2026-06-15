@@ -1,4 +1,4 @@
-import { createDashboardSnapshotSource } from '../../infrastructure/dashboard-snapshot-source';
+import { dashboardSnapshotSource } from '../../infrastructure/dashboard-snapshot-source';
 import { EMPTY_DASHBOARD_SNAPSHOT } from '../../shared/contracts/dashboard-snapshot.constants';
 import { createDashboardViewModel } from './dashboard-view-model.helpers';
 import { useDashboardSnapshot } from './use-dashboard-snapshot';
@@ -9,7 +9,7 @@ import type { DashboardViewModel } from './dashboard-view-model.types';
  */
 export function useDashboardScreen(): DashboardViewModel {
   const snapshot = useDashboardSnapshot({
-    source: createDashboardSnapshotSource(),
+    source: dashboardSnapshotSource,
     initialSnapshot: EMPTY_DASHBOARD_SNAPSHOT,
   });
 

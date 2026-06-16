@@ -59,7 +59,16 @@ export function createDashboardSnapshotSource(): DashboardSnapshotSource {
       return;
     }
 
-    const runtimeEventsOn = (window as typeof window & { runtime: { EventsOn: RuntimeEventsOn } }).runtime.EventsOn;
+    const runtimeBridge = (window as typeof window & { runtime?: { EventsOn?: RuntimeEventsOn } }).runtime;
+    const runtimeEventsOn = runtimeBridge?.EventsOn;
+
+    if (runtimeEventsOn === undefined) {
+      // The Wails runtime is only injected inside the desktop webview. When the
+      // frontend runs in a plain browser (e.g. vite dev), degrade to a no-op so
+      // the dashboard still mounts with the passive bootstrap snapshot.
+      return;
+    }
+
     runtimeUnsubscribe = runtimeEventsOn(DASHBOARD_SNAPSHOT_EVENT, handleRuntimeSnapshot);
   };
 

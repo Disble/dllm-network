@@ -14,6 +14,21 @@ describe('dashboardSnapshotSource', () => {
     expect(source.getSnapshot()).toEqual(EMPTY_DASHBOARD_SNAPSHOT);
   });
 
+  it('degrades to a no-op subscription when the Wails runtime is unavailable', async () => {
+    const module = await loadDashboardSnapshotSourceModuleWithoutRuntime();
+    const source = module.createDashboardSnapshotSource();
+    const listener = vi.fn();
+
+    let unsubscribe: () => void = () => {};
+    expect(() => {
+      unsubscribe = source.subscribe(listener);
+    }).not.toThrow();
+
+    expect(source.getSnapshot()).toEqual(EMPTY_DASHBOARD_SNAPSHOT);
+    expect(listener).not.toHaveBeenCalled();
+    expect(() => unsubscribe()).not.toThrow();
+  });
+
   it('delivers dashboard:snapshot payloads through one shared runtime subscription', async () => {
     const runtime = createRuntimeEventsOnMock();
     const module = await loadDashboardSnapshotSourceModule(runtime);
@@ -80,6 +95,13 @@ const loadDashboardSnapshotSourceModule = async (runtime = createRuntimeEventsOn
       EventsOn: runtime.eventsOn,
     },
   });
+
+  return import('../dashboard-snapshot-source');
+};
+
+const loadDashboardSnapshotSourceModuleWithoutRuntime = async () => {
+  vi.resetModules();
+  delete (window as typeof window & { runtime?: unknown }).runtime;
 
   return import('../dashboard-snapshot-source');
 };

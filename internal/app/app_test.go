@@ -10,6 +10,7 @@ import (
 	"ollama-telemetry/internal/dashboard"
 	"ollama-telemetry/internal/telemetry"
 	"ollama-telemetry/internal/telemetry/orchestrator"
+	"ollama-telemetry/internal/tray"
 )
 
 type testContextKey string
@@ -227,6 +228,66 @@ func TestWailsEmitterEmitsDashboardSnapshotEvent(t *testing.T) {
 	}
 	if !payload.PublishedAt.Equal(snapshot.PublishedAt) {
 		t.Fatalf("expected publishedAt %s, got %s", snapshot.PublishedAt, payload.PublishedAt)
+	}
+}
+
+func TestAppStartupStartsSystemTray(t *testing.T) {
+	t.Parallel()
+
+	window := &fakeWindow{}
+	controller := &fakeOrchestrator{state: orchestrator.StateRunning}
+	trayManager := &tray.MockTrayManager{}
+	app := NewWithDependencies(Dependencies{
+		Window:       window,
+		Orchestrator: controller,
+		TrayManager:  trayManager,
+		Config:       telemetry.Config{ShutdownTimeout: time.Second},
+	})
+
+	app.Startup(context.Background())
+
+	if !trayManager.Started {
+		t.Fatal("expected startup to start the system tray")
+	}
+	if trayManager.StartConfig.Tooltip != tray.DefaultTooltip {
+		t.Fatalf("expected tray tooltip %q, got %q", tray.DefaultTooltip, trayManager.StartConfig.Tooltip)
+	}
+	if len(trayManager.StartConfig.Icon) == 0 {
+		t.Fatal("expected tray icon bytes to be configured")
+	}
+	if trayManager.StartConfig.OnOpen == nil || trayManager.StartConfig.OnExit == nil {
+		t.Fatal("expected tray open and exit callbacks to be wired")
+	}
+
+	trayManager.StartConfig.OnOpen()
+
+	if got := app.Status(); !got.WindowVisible {
+		t.Fatalf("expected tray open callback to show the window, got %+v", got)
+	}
+	if !slices.Equal(window.calls, []string{"show"}) {
+		t.Fatalf("expected tray open to call show, got %v", window.calls)
+	}
+}
+
+func TestAppQuitStopsSystemTray(t *testing.T) {
+	t.Parallel()
+
+	trayManager := &tray.MockTrayManager{}
+	controller := &fakeOrchestrator{state: orchestrator.StateRunning}
+	app := NewWithDependencies(Dependencies{
+		Window:       &fakeWindow{},
+		Orchestrator: controller,
+		TrayManager:  trayManager,
+		Config:       telemetry.Config{ShutdownTimeout: time.Second},
+	})
+	app.Startup(context.Background())
+
+	if err := app.Quit(); err != nil {
+		t.Fatalf("quit: %v", err)
+	}
+
+	if !trayManager.Stopped {
+		t.Fatal("expected quit to stop the system tray")
 	}
 }
 

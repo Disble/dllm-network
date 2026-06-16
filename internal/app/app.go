@@ -10,6 +10,7 @@ import (
 	"ollama-telemetry/internal/telemetry"
 	"ollama-telemetry/internal/telemetry/ollama"
 	"ollama-telemetry/internal/telemetry/orchestrator"
+	"ollama-telemetry/internal/tray"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -37,6 +38,7 @@ type Orchestrator interface {
 type Dependencies struct {
 	Window       Window
 	Orchestrator Orchestrator
+	TrayManager  tray.TrayManager
 	Config       telemetry.Config
 }
 
@@ -51,13 +53,16 @@ type App struct {
 	ctx          context.Context
 	window       Window
 	orchestrator Orchestrator
+	trayManager  tray.TrayManager
 	config       telemetry.Config
 	visible      bool
 }
 
 // New creates the application binding used by Wails.
 func New() *App {
-	return NewWithDependencies(Dependencies{})
+	return NewWithDependencies(Dependencies{
+		TrayManager: tray.NewSystrayManager(),
+	})
 }
 
 func NewWithDependencies(deps Dependencies) *App {
@@ -81,6 +86,7 @@ func NewWithDependencies(deps Dependencies) *App {
 	return &App{
 		window:       window,
 		orchestrator: orchestratorInstance,
+		trayManager:  deps.TrayManager,
 		config:       config,
 	}
 }
@@ -90,9 +96,19 @@ func (app *App) Startup(ctx context.Context) {
 	app.mu.Lock()
 	app.ctx = ctx
 	app.visible = false
+	trayManager := app.trayManager
 	app.mu.Unlock()
 
 	_ = app.orchestrator.Start(ctx)
+
+	if trayManager != nil {
+		_ = trayManager.Start(tray.Config{
+			Icon:    tray.DefaultIcon,
+			Tooltip: tray.DefaultTooltip,
+			OnOpen:  func() { _ = app.Show() },
+			OnExit:  func() { _ = app.Quit() },
+		})
+	}
 }
 
 func (app *App) Show() error {
@@ -140,6 +156,10 @@ func (app *App) Quit() error {
 
 	if err := app.orchestrator.Stop(shutdownCtx); err != nil {
 		return err
+	}
+
+	if app.trayManager != nil {
+		_ = app.trayManager.Stop()
 	}
 
 	app.window.Quit(ctx)

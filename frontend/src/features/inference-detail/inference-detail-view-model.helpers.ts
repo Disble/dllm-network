@@ -12,19 +12,19 @@ export function buildInferenceDetailViewModel(event: InferenceEvent): InferenceD
   const promptSizeLabel = formatBytes(event.promptSize);
   const timestampLabel = formatTimestamp(event.at);
 
-  const tokenRateLabel = event.tokens !== null
+  const tokenRateLabel = event.tokens != null
     ? `${event.tokens.perSec.toFixed(1)} tok/s`
     : UNAVAILABLE_LABEL;
 
-  const latencyLabel = event.tokens !== null
+  const latencyLabel = event.tokens != null
     ? `${Math.round(event.tokens.latencyMS)}ms`
     : UNAVAILABLE_LABEL;
 
-  const promptEvalCountLabel = event.tokens !== null
+  const promptEvalCountLabel = event.tokens != null
     ? String(event.tokens.promptEvalCount)
     : UNAVAILABLE_LABEL;
 
-  const evalCountLabel = event.tokens !== null
+  const evalCountLabel = event.tokens != null
     ? String(event.tokens.evalCount)
     : UNAVAILABLE_LABEL;
 

@@ -36,19 +36,19 @@ const (
 // that they are zero. Callers MUST check for nil before reading any field.
 type TokenStats struct {
 	// Raw counters from the terminal done:true NDJSON line.
-	PromptEvalCount int // prompt_eval_count
-	EvalCount       int // eval_count (generated tokens)
+	PromptEvalCount int `json:"promptEvalCount"` // prompt_eval_count
+	EvalCount       int `json:"evalCount"`       // eval_count (generated tokens)
 
 	// Raw durations from the terminal done:true NDJSON line (Ollama uses ns).
-	EvalDuration  time.Duration // eval_duration
-	TotalDuration time.Duration // total_duration
-	LoadDuration  time.Duration // load_duration
+	EvalDuration  time.Duration `json:"evalDuration"`  // eval_duration
+	TotalDuration time.Duration `json:"totalDuration"` // total_duration
+	LoadDuration  time.Duration `json:"loadDuration"`  // load_duration
 
 	// Derived metrics.
 	// PerSec = EvalCount / EvalDuration.Seconds(); zero if EvalDuration==0.
-	PerSec float64
+	PerSec float64 `json:"perSec"`
 	// LatencyMS = TotalDuration in milliseconds.
-	LatencyMS float64
+	LatencyMS float64 `json:"latencyMS"`
 }
 
 // Inference is the domain type produced by the extractor for a single captured
@@ -56,19 +56,19 @@ type TokenStats struct {
 // pipeline into the dashboard projection layer.
 type Inference struct {
 	// At is the wall-clock time the exchange was processed.
-	At time.Time
+	At time.Time `json:"at"`
 
 	// Request-side metadata.
-	Endpoint   string // HTTP path (e.g. "/api/generate")
-	Method     string // HTTP method (e.g. "POST")
-	Model      string // model field from request JSON body
-	PromptSize int    // byte length of request body (prompt + options)
-	Streaming  bool   // true when response was an NDJSON stream
+	Endpoint   string `json:"endpoint"`   // HTTP path (e.g. "/api/generate")
+	Method     string `json:"method"`     // HTTP method (e.g. "POST")
+	Model      string `json:"model"`      // model field from request JSON body
+	PromptSize int    `json:"promptSize"` // byte length of request body (prompt + options)
+	Streaming  bool   `json:"streaming"`  // true when response was an NDJSON stream
 
 	// Status describes the lifecycle phase of this inference.
-	Status Phase
+	Status Phase `json:"status"`
 
 	// Tokens holds derived and raw performance metrics. It is nil when
 	// metrics are unavailable (Status==PhaseInProgress or PhaseMetadataOnly).
-	Tokens *TokenStats
+	Tokens *TokenStats `json:"tokens"`
 }

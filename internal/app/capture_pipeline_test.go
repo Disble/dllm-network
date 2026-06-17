@@ -156,6 +156,62 @@ func TestCapturePipeline_FakeSourceSegmentsReachEmitter(t *testing.T) {
 	}
 }
 
+// TestCapturePipeline_PairsAcrossSwappedTuples asserts that a request and its
+// response are paired even though the OS delivers them with SWAPPED 4-tuples
+// (request: client→server; response: server→client). This models real WinDivert
+// capture (verified live in WU5), unlike the same-tuple golden fixture.
+func TestCapturePipeline_PairsAcrossSwappedTuples(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	reqBytes := buildFakeGenerateRequest()
+	respBytes := buildFakeGenerateResponse()
+
+	baseTime := time.Now()
+	reqTuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+	// Response arrives with src/dst SWAPPED — exactly how the OS reports the
+	// reverse direction of the same TCP connection.
+	respTuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 11434, DstPort: 54321}
+
+	segments := []capture.Segment{
+		{Tuple: reqTuple, Dir: capture.DirToServer, Payload: reqBytes, SeqNo: 0, At: baseTime},
+		{Tuple: respTuple, Dir: capture.DirFromServer, Payload: respBytes, SeqNo: 0, At: baseTime.Add(time.Millisecond)},
+	}
+
+	fake := capture.NewFakeSource(segments)
+
+	var emitted []dashboard.Snapshot
+	emitFn := func(ctx context.Context, event string, payload ...any) {
+		if event == dashboard.TopicDashboardSnapshot {
+			if snap, ok := payload[0].(dashboard.Snapshot); ok {
+				emitted = append(emitted, snap)
+			}
+		}
+	}
+
+	app := newTestAppWithEmitter(fake, emitFn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	var foundInference bool
+	for time.Now().Before(deadline) && !foundInference {
+		for _, snap := range emitted {
+			if snap.Inference.Current.Status == 1 { // PhaseCompleted
+				foundInference = true
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if !foundInference {
+		t.Fatalf("request/response not paired across swapped tuples; got %d snapshots, no PhaseCompleted inference", len(emitted))
+	}
+}
+
 // TestCapturePipeline_QuitCancelsCapture asserts that Quit cancels the capture
 // goroutine context and Close is called on the source, within ShutdownTimeout.
 func TestCapturePipeline_QuitCancelsCapture(t *testing.T) {

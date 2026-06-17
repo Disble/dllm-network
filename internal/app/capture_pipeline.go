@@ -135,10 +135,14 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 		})
 
 		for _, stream := range streams {
-			cp, ok := parsers[stream.Tuple]
+			// Key per logical connection, not per packet direction: the OS
+			// reports the request (client→server) and response (server→client)
+			// with SWAPPED 4-tuples, so we canonicalise to pair them.
+			key := canonicalTuple(stream.Tuple)
+			cp, ok := parsers[key]
 			if !ok {
 				cp = &connParsers{req: httpx.NewParser(), resp: httpx.NewParser()}
-				parsers[stream.Tuple] = cp
+				parsers[key] = cp
 			}
 
 			var msgs []httpx.Message
@@ -147,7 +151,7 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 				msgs = cp.req.Feed(stream.Payload)
 				for _, m := range msgs {
 					if m.Kind == httpx.KindRequest {
-						requestBuf[stream.Tuple] = m
+						requestBuf[key] = m
 					}
 				}
 			case capture.DirFromServer:
@@ -156,7 +160,7 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					if m.Kind != httpx.KindResponse {
 						continue
 					}
-					req, hasReq := requestBuf[stream.Tuple]
+					req, hasReq := requestBuf[key]
 					if !hasReq {
 						continue
 					}
@@ -185,6 +189,27 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 			Inference: inferenceState,
 		})
 	}
+}
+
+// canonicalTuple returns a direction-independent key for a TCP connection so
+// that the request (client→server) and response (server→client) segments —
+// which the OS reports with swapped src/dst — map to the same connection. The
+// two endpoints are ordered deterministically by (IP, port).
+func canonicalTuple(t reassembly.FourTuple) reassembly.FourTuple {
+	src := t
+	swapped := reassembly.FourTuple{SrcIP: t.DstIP, DstIP: t.SrcIP, SrcPort: t.DstPort, DstPort: t.SrcPort}
+	if endpointLess(swapped.SrcIP, swapped.SrcPort, src.SrcIP, src.SrcPort) {
+		return swapped
+	}
+	return src
+}
+
+// endpointLess orders two (IP, port) endpoints deterministically.
+func endpointLess(ipA string, portA uint16, ipB string, portB uint16) bool {
+	if ipA != ipB {
+		return ipA < ipB
+	}
+	return portA < portB
 }
 
 // buildCaptureInput derives the per-category signals for the projector from

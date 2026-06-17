@@ -98,9 +98,23 @@ func NewWithDependencies(deps Dependencies) *App {
 	// capture pipeline so both write into the same bounded history.
 	recentStore := store.NewRecent(defaultRecentModelLimit, defaultRecentEventLimit)
 
+	// The shared assembler prevents the two emitter paths from clobbering each
+	// other. Both the orchestrator tick publisher and the capture pipeline write
+	// their partial state (Ollama/System vs Inference/Capture) into the assembler,
+	// which merges and emits a COMPLETE Snapshot on every write.
+	sharedPublisher := dashboard.NewPublisher(nil, recentStore, emitter)
+	assembler := newSnapshotAssembler(sharedPublisher)
+
 	orchestratorInstance := deps.Orchestrator
 	if orchestratorInstance == nil {
-		runtimePublisher, _ := newRuntimePublisherShared(emitter, recentStore)
+		// Wire the orchestrator publisher directly to the assembler's OllamaSystem
+		// path so that every tick emits a COMPLETE merged Snapshot, not just a
+		// partial Ollama/System snapshot that would clobber the Inference data.
+		runtimePublisher := newRuntimePublisherWithDependencies(
+			activity.NewEngine(),
+			recentStore,
+			ollamaSystemPublisher{assembler},
+		)
 		poller := ollama.NewPoller(ollama.NewClient(defaultOllamaBaseURL, nil, nil), nil)
 		orchestratorInstance = orchestrator.NewWithDependencies(config, orchestrator.Dependencies{
 			Poller:    poller,
@@ -119,11 +133,10 @@ func NewWithDependencies(deps Dependencies) *App {
 		src = newCaptureSource()
 	}
 
-	// The capture pipeline emits its own snapshots via a lightweight publisher
-	// that carries only CaptureInput + InferenceState (Ollama/System fields are
-	// zero — the frontend merges with the latest orchestrator-emitted snapshot).
-	pipelinePublisher := dashboard.NewPublisher(nil, recentStore, emitter)
-	pipeline := newInferencePipeline(src, recentStore, pipelinePublisher)
+	// The capture pipeline publishes through the capturePublisher adapter, which
+	// routes into the shared assembler and emits a COMPLETE merged Snapshot —
+	// never an Inference-only partial that would clobber the Ollama/System data.
+	pipeline := newInferencePipeline(src, recentStore, capturePublisher{assembler})
 
 	return &App{
 		window:        window,
@@ -268,17 +281,10 @@ func (wailsWindow) Quit(ctx context.Context) {
 }
 
 // newRuntimePublisher creates the orchestrator snapshot publisher with a fresh
-// recent store (used in tests that don't need to share the store).
+// recent store and emitter. Used in tests that need a standalone publisher
+// without the shared snapshotAssembler.
 func newRuntimePublisher(emitter dashboard.Emitter) orchestrator.SnapshotPublisher {
 	recent := store.NewRecent(defaultRecentModelLimit, defaultRecentEventLimit)
 	pub := newRuntimePublisherWithDependencies(activity.NewEngine(), recent, dashboard.NewPublisher(nil, recent, emitter))
 	return pub
-}
-
-// newRuntimePublisherShared creates the orchestrator snapshot publisher wired
-// to a caller-supplied recent store. Used in NewWithDependencies to share the
-// store between the orchestrator publisher and the capture pipeline.
-func newRuntimePublisherShared(emitter dashboard.Emitter, recent *store.Recent) (orchestrator.SnapshotPublisher, *store.Recent) {
-	pub := newRuntimePublisherWithDependencies(activity.NewEngine(), recent, dashboard.NewPublisher(nil, recent, emitter))
-	return pub, recent
 }

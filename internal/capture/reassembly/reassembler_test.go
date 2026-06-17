@@ -64,6 +64,38 @@ func TestReassembler_SingleRequestSplitAcrossPackets(t *testing.T) {
 	}
 }
 
+func TestReassembler_AbsoluteTCPSequenceNumbers(t *testing.T) {
+	t.Parallel()
+
+	// Real WinDivert capture delivers absolute TCP sequence numbers (e.g.
+	// ~3.5 billion, the connection's ISN), NOT offsets starting at 0. The
+	// reassembler must baseline on the first observed segment instead of
+	// assuming the stream starts at byte 0.
+	want := readFixture(t, "generate_full.bin")
+	seg1 := readFixture(t, "generate_3_segments.seg1.bin")
+	seg2 := readFixture(t, "generate_3_segments.seg2.bin")
+	seg3 := readFixture(t, "generate_3_segments.seg3.bin")
+
+	tuple := testTuple()
+	base := time.Date(2026, time.June, 16, 12, 0, 0, 0, time.UTC)
+
+	const isn = uint32(3574931494) // absolute TCP sequence number, as seen live
+	seq1 := isn
+	seq2 := seq1 + uint32(len(seg1))
+	seq3 := seq2 + uint32(len(seg2))
+
+	r := New()
+	var streams []Stream
+	streams = append(streams, r.Push(Segment{Tuple: tuple, Dir: DirToServer, Payload: seg1, SeqNo: seq1, At: base})...)
+	streams = append(streams, r.Push(Segment{Tuple: tuple, Dir: DirToServer, Payload: seg2, SeqNo: seq2, At: base.Add(time.Millisecond)})...)
+	streams = append(streams, r.Push(Segment{Tuple: tuple, Dir: DirToServer, Payload: seg3, SeqNo: seq3, At: base.Add(2 * time.Millisecond)})...)
+
+	got := concatPayloads(streams)
+	if !bytes.Equal(got, want) {
+		t.Fatalf("absolute-seq reassembly mismatch\n got: %q\nwant: %q", got, want)
+	}
+}
+
 func concatPayloads(streams []Stream) []byte {
 	var buf bytes.Buffer
 	for _, s := range streams {

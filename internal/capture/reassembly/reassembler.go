@@ -10,8 +10,17 @@ type connKey struct {
 
 // connState tracks per-connection/direction reassembly progress.
 type connState struct {
+	// started is false until the first segment is observed. The first
+	// segment's SeqNo establishes the baseline, because real TCP captures
+	// carry absolute sequence numbers (the connection ISN), not offsets
+	// from zero.
+	started bool
 	// nextSeq is the next expected stream byte offset.
 	nextSeq uint32
+	// lowSeq is the lowest SeqNo emitted so far (the baseline). A segment
+	// arriving below it is an earlier, not-yet-seen range (out-of-order),
+	// not a duplicate.
+	lowSeq uint32
 	// pending holds segments received ahead of nextSeq, keyed by SeqNo,
 	// until the gap before them is filled.
 	pending map[uint32][]byte
@@ -68,6 +77,14 @@ func (r *Reassembler) Push(seg Segment) []Stream {
 	}
 	state.lastSeen = seg.At
 
+	// Baseline on the first observed segment: real captures carry absolute
+	// TCP sequence numbers (the ISN), so the stream does not start at 0.
+	if !state.started {
+		state.started = true
+		state.nextSeq = seg.SeqNo
+		state.lowSeq = seg.SeqNo
+	}
+
 	switch {
 	case seg.SeqNo == state.nextSeq:
 		// In-order: emit immediately, then drain any pending segments
@@ -77,6 +94,13 @@ func (r *Reassembler) Push(seg Segment) []Stream {
 		// Out-of-order/ahead: buffer until the gap is filled.
 		state.pending[seg.SeqNo] = append([]byte(nil), seg.Payload...)
 		return nil
+	case seg.SeqNo < state.lowSeq:
+		// Earlier, not-yet-seen range (an out-of-order segment that
+		// precedes everything observed so far). Emit it as its own delta;
+		// consumers order deltas by SeqNo. Lower the baseline watermark.
+		state.lowSeq = seg.SeqNo
+		delta := append([]byte(nil), seg.Payload...)
+		return []Stream{{Tuple: seg.Tuple, Dir: seg.Dir, Payload: delta, SeqNo: seg.SeqNo}}
 	default:
 		// Already-seen byte range (duplicate/overlap) — nothing new to
 		// emit.

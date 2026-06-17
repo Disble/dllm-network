@@ -152,8 +152,15 @@ func (p *Parser) consumeHeaders() ([]Message, bool) {
 	} else if ph.contentLength >= 0 {
 		p.state = stateBody
 	} else {
-		// Unknown body framing — skip (reset for next message).
+		// No body framing (no Content-Length, not chunked). A request with no
+		// framing has no body (e.g. GET, or a keep-alive poll) — emit it now so
+		// it can be paired with its response. Without this, bodyless requests
+		// are silently dropped and no exchange is ever paired. For a response
+		// with no framing, body length is unknown — skip to the next message.
 		p.state = stateHeaders
+		if ph.kind == KindRequest {
+			return []Message{{Kind: ph.kind, Method: ph.method, Path: ph.path}}, true
+		}
 	}
 
 	return nil, true

@@ -1,0 +1,8 @@
+POST /api/generate HTTP/1.1
+Host: 127.0.0.1:11434
+User-Agent: curl/8.4.0
+Accept: */*
+Content-Length: 64
+Content-Type: application/json
+
+{"model":"llama3","prompt":"Why is the sky blue?","stream":true}

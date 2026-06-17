@@ -1,0 +1,4 @@
+: 64
+Content-Type: application/json
+
+{"model":"llama3","prompt":"Why is the sky blue?","stream":true}

@@ -1,4 +1,19 @@
-import type { DashboardSnapshot } from './dashboard-snapshot.types';
+import type { DashboardSnapshot, InferenceEvent } from './dashboard-snapshot.types';
+import { PHASE_IN_PROGRESS } from './dashboard-snapshot.types';
+
+/**
+ * EMPTY_INFERENCE_EVENT is a zero-value InferenceEvent used as the bootstrap current event.
+ */
+export const EMPTY_INFERENCE_EVENT: InferenceEvent = {
+  at: '',
+  endpoint: '',
+  method: '',
+  model: '',
+  promptSize: 0,
+  streaming: false,
+  status: PHASE_IN_PROGRESS,
+  tokens: null,
+};
 
 /**
  * EMPTY_DASHBOARD_SNAPSHOT provides a safe passive-only bootstrap state before backend events arrive.
@@ -12,6 +27,7 @@ export const EMPTY_DASHBOARD_SNAPSHOT: DashboardSnapshot = {
       version: '',
       primaryModel: '',
       runningModels: [],
+      runningModelDetails: [],
       catalogModelCount: 0,
       observedAt: '',
       lastConfirmedAt: '',
@@ -71,5 +87,9 @@ export const EMPTY_DASHBOARD_SNAPSHOT: DashboardSnapshot = {
       'Exact HTTP status results are unavailable in passive mode.',
       'Exact streaming chunks are unavailable in passive mode.',
     ],
+  },
+  inference: {
+    current: EMPTY_INFERENCE_EVENT,
+    recent: [],
   },
 };

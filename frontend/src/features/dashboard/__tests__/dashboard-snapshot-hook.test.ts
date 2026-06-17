@@ -136,4 +136,5 @@ const createSnapshot = (model: string, kind: DashboardSnapshot['inferred']['curr
       'Exact streaming chunks are unavailable in passive mode.',
     ],
   },
+  inference: { current: { at: '', endpoint: '', method: '', model: '', promptSize: 0, streaming: false, status: 0, tokens: null }, recent: [] },
 });

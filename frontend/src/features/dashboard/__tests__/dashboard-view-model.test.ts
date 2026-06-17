@@ -105,5 +105,6 @@ function createSnapshot(overrides?: Partial<DashboardSnapshot>): DashboardSnapsh
         'Exact streaming chunks are unavailable in passive mode.',
       ],
     },
+    inference: overrides?.inference ?? { current: { at: '', endpoint: '', method: '', model: '', promptSize: 0, streaming: false, status: 0, tokens: null }, recent: [] },
   };
 }

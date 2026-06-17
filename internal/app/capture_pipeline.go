@@ -107,6 +107,8 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 	var current inference.Inference
 
 	status := p.src.Status()
+	capLog("recvLoop start: active=%v elevated=%v reason=%q", status.Active, status.Elevated, status.Reason)
+	segCount := 0
 
 	for {
 		seg, err := p.src.Recv(ctx)
@@ -114,10 +116,16 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 			// Context cancelled (Quit), deadline exceeded, or fake source
 			// exhausted — exit cleanly.
 			if isTerminalRecvErr(err) {
+				capLog("recvLoop exit: %v (total segments=%d)", err, segCount)
 				return
 			}
 			// Any other driver-level error: non-fatal — keep running.
+			capLog("recv non-fatal error: %v", err)
 			continue
+		}
+		segCount++
+		if len(seg.Payload) > 0 {
+			capLog("seg #%d dir=%d len=%d src=%s:%d dst=%s:%d seq=%d", segCount, seg.Dir, len(seg.Payload), seg.Tuple.SrcIP, seg.Tuple.SrcPort, seg.Tuple.DstIP, seg.Tuple.DstPort, seg.SeqNo)
 		}
 
 		// Refresh status after each recv (source may have transitioned).
@@ -150,6 +158,7 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 			case capture.DirToServer:
 				msgs = cp.req.Feed(stream.Payload)
 				for _, m := range msgs {
+					capLog("  req msg: kind=%d method=%s path=%s", m.Kind, m.Method, m.Path)
 					if m.Kind == httpx.KindRequest {
 						requestBuf[key] = m
 					}
@@ -157,15 +166,24 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 			case capture.DirFromServer:
 				msgs = cp.resp.Feed(stream.Payload)
 				for _, m := range msgs {
+					capLog("  resp msg: kind=%d status=%d done=%v bodyLen=%d", m.Kind, m.StatusCode, m.Done, len(m.Body))
 					if m.Kind != httpx.KindResponse {
 						continue
 					}
 					req, hasReq := requestBuf[key]
 					if !hasReq {
+						capLog("    no buffered request for key %s:%d/%s:%d", key.SrcIP, key.SrcPort, key.DstIP, key.DstPort)
 						continue
 					}
 					inf, ok := p.extractor.FromExchange(req, m)
+					capLog("    FromExchange ok=%v status=%d model=%s hasTokens=%v", ok, inf.Status, inf.Model, inf.Tokens != nil)
 					if !ok {
+						continue
+					}
+					// Ignore non-inference exchanges (e.g. /api/tags, /api/ps,
+					// /api/version polls — including this app's own orchestrator
+					// polling). They must not overwrite the displayed inference.
+					if inf.Status == inference.PhaseMetadataOnly {
 						continue
 					}
 					current = inf

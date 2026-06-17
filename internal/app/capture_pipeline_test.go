@@ -212,6 +212,51 @@ func TestCapturePipeline_PairsAcrossSwappedTuples(t *testing.T) {
 	}
 }
 
+// TestCapturePipeline_IgnoresMetadataOnlyPolls asserts that a non-inference
+// exchange (e.g. a GET /api/tags poll — including this app's own orchestrator
+// polling) never becomes the displayed current inference.
+func TestCapturePipeline_IgnoresMetadataOnlyPolls(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	getReq := []byte("GET /api/tags HTTP/1.1\r\nHost: 127.0.0.1:11434\r\n\r\n")
+	getResp := []byte("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}")
+
+	baseTime := time.Now()
+	reqTuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 55000, DstPort: 11434}
+	respTuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 11434, DstPort: 55000}
+
+	segments := []capture.Segment{
+		{Tuple: reqTuple, Dir: capture.DirToServer, Payload: getReq, SeqNo: 0, At: baseTime},
+		{Tuple: respTuple, Dir: capture.DirFromServer, Payload: getResp, SeqNo: 0, At: baseTime.Add(time.Millisecond)},
+	}
+
+	fake := capture.NewFakeSource(segments)
+
+	var emitted []dashboard.Snapshot
+	emitFn := func(ctx context.Context, event string, payload ...any) {
+		if event == dashboard.TopicDashboardSnapshot {
+			if snap, ok := payload[0].(dashboard.Snapshot); ok {
+				emitted = append(emitted, snap)
+			}
+		}
+	}
+
+	app := newTestAppWithEmitter(fake, emitFn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	time.Sleep(300 * time.Millisecond)
+
+	for _, snap := range emitted {
+		if snap.Inference.Current.Endpoint == "/api/tags" {
+			t.Fatal("metadata-only poll incorrectly became the current inference")
+		}
+	}
+}
+
 // TestCapturePipeline_QuitCancelsCapture asserts that Quit cancels the capture
 // goroutine context and Close is called on the source, within ShutdownTimeout.
 func TestCapturePipeline_QuitCancelsCapture(t *testing.T) {

@@ -1,0 +1,13 @@
+HTTP/1.1 200 OK
+Content-Type: application/x-ndjson
+Transfer-Encoding: chunked
+
+168
+{"model":"llama3","response":"Once","done":false}
+{"model":"llama3","response":" upon","done":false}
+{"model":"llama3","response":" a","done":false}
+{"model":"llama3","response":" time","done":false}
+{"model":"llama3","response":"","done":true,"prompt_eval_count":5,"eval_count":4,"eval_duration":200000000,"total_duration":250000000,"load_duration":10000000}
+
+0
+

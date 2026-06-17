@@ -1,0 +1,11 @@
+HTTP/1.1 200 OK
+Content-Type: application/x-ndjson
+Transfer-Encoding: chunked
+
+73
+{"model":"llama3","response":"Hello","done":false}
+{invalid json here
+{"model":"llama3","response":"","done":true}
+
+0
+

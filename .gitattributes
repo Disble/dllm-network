@@ -1,0 +1,5 @@
+# Binary test fixtures — HTTP wire bytes contain \r\n that must not be touched.
+internal/capture/*/testdata/*.bin binary
+internal/capture/*/testdata/*.seg1.bin binary
+internal/capture/*/testdata/*.seg2.bin binary
+internal/capture/*/testdata/*.seg3.bin binary

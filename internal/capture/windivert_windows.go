@@ -178,9 +178,9 @@ func (w *windivertSource) recvLoop(ctx context.Context) {
 		}
 
 		raw := packet[:recvLen]
-		seg, ok := parseIPv4TCPPacket(raw, time.Now())
+		seg, ok := parseIPPacket(raw, time.Now())
 		if !ok {
-			continue // skip malformed, ARP, non-TCP, etc.
+			continue // skip malformed, ARP, non-TCP, IPv6 ext-header, etc.
 		}
 		if len(seg.Payload) == 0 {
 			continue // skip ACK-only / empty TCP segments
@@ -283,7 +283,51 @@ func parseIPv4TCPPacket(raw []byte, at time.Time) (Segment, bool) {
 	dstIP := net.IP(raw[16:20]).String()
 
 	// TCP header starts immediately after the IPv4 header.
-	tcp := raw[ihl:]
+	return parseTCPSegment(raw[ihl:], srcIP, dstIP, at)
+}
+
+// parseIPPacket dispatches a raw IP packet to the IPv4 or IPv6 parser based on
+// the version nibble. Ollama clients that connect via "localhost" frequently
+// resolve to IPv6 (::1) on Windows, so capturing both is required.
+func parseIPPacket(raw []byte, at time.Time) (Segment, bool) {
+	if len(raw) < 1 {
+		return Segment{}, false
+	}
+	switch raw[0] >> 4 {
+	case 4:
+		return parseIPv4TCPPacket(raw, at)
+	case 6:
+		return parseIPv6TCPPacket(raw, at)
+	default:
+		return Segment{}, false
+	}
+}
+
+// parseIPv6TCPPacket parses a raw IPv6+TCP packet. The IPv6 header is a fixed
+// 40 bytes; only plain TCP (Next Header == 6) is handled — extension headers
+// are not expected on loopback Ollama traffic.
+func parseIPv6TCPPacket(raw []byte, at time.Time) (Segment, bool) {
+	const ipv6HeaderLen = 40
+	if len(raw) < ipv6HeaderLen {
+		return Segment{}, false
+	}
+	if (raw[0] >> 4) != 6 {
+		return Segment{}, false
+	}
+	// Next Header (byte 6) must be TCP; extension headers are not handled.
+	if raw[6] != ipProtoTCP {
+		return Segment{}, false
+	}
+
+	srcIP := net.IP(raw[8:24]).String()
+	dstIP := net.IP(raw[24:40]).String()
+
+	return parseTCPSegment(raw[ipv6HeaderLen:], srcIP, dstIP, at)
+}
+
+// parseTCPSegment parses the TCP header + payload (the bytes after the IP
+// header) into a Segment, shared by the IPv4 and IPv6 paths.
+func parseTCPSegment(tcp []byte, srcIP, dstIP string, at time.Time) (Segment, bool) {
 	if len(tcp) < 20 {
 		return Segment{}, false // TCP header truncated
 	}

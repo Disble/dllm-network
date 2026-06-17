@@ -238,6 +238,180 @@ func TestPublisherReturnsEmitterErrorAfterAttemptingSnapshotPublish(t *testing.T
 	}
 }
 
+// ---- captureMode tests (tasks 4.1 / 4.3 / 4.5 RED) ----------------------------
+
+// CaptureInput carries the per-category data signals used by captureMode to
+// decide which PassiveLimitMode flags to flip. A zero-value means capture is
+// either disabled or has not produced that category of data yet.
+//
+// These tests drive the design of captureMode(CaptureInput) PassiveLimitMode,
+// which replaces the hardcoded passiveMode() helper.
+
+func TestCaptureMode_FlagsFlipTrueWhenSourceActive(t *testing.T) {
+	t.Parallel()
+
+	// All five data categories are present: the active capture source has seen
+	// latency, token counts, payload, status, and streaming chunk data.
+	input := CaptureInput{
+		SourceActive:    true,
+		HasLatency:      true,
+		HasTokenCounts:  true,
+		HasPayload:      true,
+		HasStatus:       true,
+		HasStreamChunks: true,
+	}
+
+	got := captureMode(input)
+
+	if !got.ExactRequestLatencyAvailable {
+		t.Error("expected ExactRequestLatencyAvailable=true when capture provides latency")
+	}
+	if !got.ExactTokenCountsAvailable {
+		t.Error("expected ExactTokenCountsAvailable=true when capture provides token counts")
+	}
+	if !got.ExactPayloadAvailable {
+		t.Error("expected ExactPayloadAvailable=true when capture provides payload")
+	}
+	if !got.ExactStatusAvailable {
+		t.Error("expected ExactStatusAvailable=true when capture provides status")
+	}
+	if !got.ExactStreamingChunksAvailable {
+		t.Error("expected ExactStreamingChunksAvailable=true when capture provides streaming chunks")
+	}
+	if got.Mode != "capture-active" {
+		t.Errorf("expected mode=capture-active, got %q", got.Mode)
+	}
+}
+
+func TestCaptureMode_DisabledOrUnelevatedStaysHonest(t *testing.T) {
+	t.Parallel()
+
+	// Capture is disabled / unelevated — no data available at all.
+	input := CaptureInput{
+		SourceActive:   false,
+		UnelevatedNote: "run as administrator to enable live capture",
+	}
+
+	got := captureMode(input)
+
+	if got.ExactRequestLatencyAvailable {
+		t.Error("expected ExactRequestLatencyAvailable=false when source inactive")
+	}
+	if got.ExactTokenCountsAvailable {
+		t.Error("expected ExactTokenCountsAvailable=false when source inactive")
+	}
+	if got.ExactPayloadAvailable {
+		t.Error("expected ExactPayloadAvailable=false when source inactive")
+	}
+	if got.ExactStatusAvailable {
+		t.Error("expected ExactStatusAvailable=false when source inactive")
+	}
+	if got.ExactStreamingChunksAvailable {
+		t.Error("expected ExactStreamingChunksAvailable=false when source inactive")
+	}
+	if len(got.Notes) == 0 {
+		t.Error("expected at least one Note explaining capture unavailability")
+	}
+	found := false
+	for _, note := range got.Notes {
+		if note == "run as administrator to enable live capture" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected unelevated note in Notes, got %v", got.Notes)
+	}
+}
+
+func TestCaptureMode_PartialDataPerCategoryHonesty(t *testing.T) {
+	t.Parallel()
+
+	// Source is active, has status and payload, but this exchange was a
+	// /api/tags call — no token counts or latency or streaming chunks.
+	input := CaptureInput{
+		SourceActive:    true,
+		HasLatency:      false,
+		HasTokenCounts:  false,
+		HasPayload:      true,
+		HasStatus:       true,
+		HasStreamChunks: false,
+	}
+
+	got := captureMode(input)
+
+	if got.ExactTokenCountsAvailable {
+		t.Error("expected ExactTokenCountsAvailable=false for metadata-only exchange lacking eval_count")
+	}
+	if got.ExactRequestLatencyAvailable {
+		t.Error("expected ExactRequestLatencyAvailable=false for exchange without latency data")
+	}
+	if !got.ExactStatusAvailable {
+		t.Error("expected ExactStatusAvailable=true when status data is present")
+	}
+	if !got.ExactPayloadAvailable {
+		t.Error("expected ExactPayloadAvailable=true when payload data is present")
+	}
+	if got.ExactStreamingChunksAvailable {
+		t.Error("expected ExactStreamingChunksAvailable=false for non-streaming exchange")
+	}
+}
+
+// ---- running model enrichment tests (task 4.7 RED) ---------------------------
+
+func TestConfirmedOllama_RunningModelEnrichmentPassthrough(t *testing.T) {
+	t.Parallel()
+
+	expiresAt := time.Date(2026, 6, 16, 13, 0, 0, 0, time.UTC)
+	snap := ollama.PollSnapshot{
+		Meta: ollama.SnapshotMeta{Status: ollama.StatusConfirmed, Reachable: true},
+		Running: ollama.RunningModelsSnapshot{
+			Meta: ollama.SnapshotMeta{Status: ollama.StatusConfirmed},
+			Models: []ollama.RunningModel{
+				{
+					Name:          "llama3:8b-q4_0",
+					Model:         "llama3",
+					Size:          4_500_000_000,
+					SizeVRAM:      4_200_000_000,
+					Details:       ollama.ModelDetails{ParameterSize: "8B", QuantizationLevel: "Q4_0"},
+					ContextLength: 8192,
+					ExpiresAt:     expiresAt,
+				},
+			},
+		},
+	}
+
+	confirmed := confirmedOllama(snap)
+
+	if len(confirmed.RunningModels) != 1 || confirmed.RunningModels[0] != "llama3:8b-q4_0" {
+		t.Fatalf("expected legacy RunningModels to preserve string name, got %v", confirmed.RunningModels)
+	}
+	if len(confirmed.RunningModelDetails) != 1 {
+		t.Fatalf("expected RunningModelDetails to have 1 entry, got %d", len(confirmed.RunningModelDetails))
+	}
+	d := confirmed.RunningModelDetails[0]
+	if d.Name != "llama3:8b-q4_0" {
+		t.Errorf("expected Name=llama3:8b-q4_0, got %q", d.Name)
+	}
+	if d.Size != 4_500_000_000 {
+		t.Errorf("expected Size=4500000000, got %d", d.Size)
+	}
+	if d.SizeVRAM != 4_200_000_000 {
+		t.Errorf("expected SizeVRAM=4200000000, got %d", d.SizeVRAM)
+	}
+	if d.ParameterSize != "8B" {
+		t.Errorf("expected ParameterSize=8B, got %q", d.ParameterSize)
+	}
+	if d.QuantizationLevel != "Q4_0" {
+		t.Errorf("expected QuantizationLevel=Q4_0, got %q", d.QuantizationLevel)
+	}
+	if d.ContextLength != 8192 {
+		t.Errorf("expected ContextLength=8192, got %d", d.ContextLength)
+	}
+	if !d.ExpiresAt.Equal(expiresAt) {
+		t.Errorf("expected ExpiresAt=%v, got %v", expiresAt, d.ExpiresAt)
+	}
+}
+
 type stubRecentReader struct {
 	snapshots  []store.Snapshot
 	activities []activity.Event

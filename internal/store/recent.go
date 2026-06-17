@@ -1,3 +1,14 @@
+// Package store holds the bounded chronological history of confirmed-model
+// snapshots and inferred-activity events used by the dashboard projector.
+//
+// Transition-aware API (WU4, 2026-06-16):
+//   - RecordSnapshotOnTransition: only appends when the confirmed model name
+//     changes, preventing repeated near-duplicate rows from poll cycles.
+//   - RecordInferenceCompletion: appends one entry to the inference-event feed
+//     per done:true completion — always a genuine state change.
+//   - InferenceEvents: returns the bounded inference event history.
+//
+// The original RecordSnapshot method is preserved for backward compatibility.
 package store
 
 import (
@@ -5,6 +16,7 @@ import (
 	"time"
 
 	"ollama-telemetry/internal/activity"
+	"ollama-telemetry/internal/telemetry/inference"
 )
 
 type Snapshot struct {
@@ -13,17 +25,20 @@ type Snapshot struct {
 }
 
 type Recent struct {
-	mu            sync.RWMutex
-	snapshotLimit int
-	activityLimit int
-	snapshots     []Snapshot
-	activities    []activity.Event
+	mu             sync.RWMutex
+	snapshotLimit  int
+	activityLimit  int
+	inferenceLimit int
+	snapshots      []Snapshot
+	activities     []activity.Event
+	inferences     []inference.Inference
 }
 
 func NewRecent(snapshotLimit, activityLimit int) *Recent {
 	return &Recent{
-		snapshotLimit: normalizeLimit(snapshotLimit),
-		activityLimit: normalizeLimit(activityLimit),
+		snapshotLimit:  normalizeLimit(snapshotLimit),
+		activityLimit:  normalizeLimit(activityLimit),
+		inferenceLimit: normalizeLimit(snapshotLimit), // same capacity as snapshots
 	}
 }
 
@@ -62,6 +77,48 @@ func (recent *Recent) Snapshots() []Snapshot {
 	defer recent.mu.RUnlock()
 
 	return append([]Snapshot(nil), recent.snapshots...)
+}
+
+// RecordSnapshotOnTransition appends snapshot only when the confirmed model
+// name differs from the most recently recorded snapshot. Returns true when a
+// new entry was appended (a genuine transition occurred), false when the poll
+// produced no change and the entry was suppressed.
+func (recent *Recent) RecordSnapshotOnTransition(snapshot Snapshot) bool {
+	recent.mu.Lock()
+	defer recent.mu.Unlock()
+
+	// Only append when the model name has actually changed.
+	if len(recent.snapshots) > 0 {
+		last := recent.snapshots[len(recent.snapshots)-1]
+		if last.ConfirmedModel == snapshot.ConfirmedModel {
+			return false
+		}
+	}
+
+	recent.snapshots = appendBoundedSnapshot(recent.snapshots, snapshot, recent.snapshotLimit)
+	return true
+}
+
+// RecordInferenceCompletion appends a completed inference event to the bounded
+// inference-event feed. Each completion is always a genuine state transition —
+// no dedup is applied. Callers should only call this for done:true events.
+func (recent *Recent) RecordInferenceCompletion(inf inference.Inference) {
+	recent.mu.Lock()
+	defer recent.mu.Unlock()
+
+	recent.inferences = appendBoundedInference(recent.inferences, inf, recent.inferenceLimit)
+}
+
+// InferenceEvents returns a copy of the bounded inference-event history in
+// chronological order. Returns nil when no completions have been recorded.
+func (recent *Recent) InferenceEvents() []inference.Inference {
+	recent.mu.RLock()
+	defer recent.mu.RUnlock()
+
+	if len(recent.inferences) == 0 {
+		return nil
+	}
+	return append([]inference.Inference(nil), recent.inferences...)
 }
 
 func (recent *Recent) AppendActivity(event activity.Event) {
@@ -110,4 +167,17 @@ func appendBoundedActivity(existing []activity.Event, event activity.Event, limi
 	}
 
 	return append([]activity.Event(nil), existing[len(existing)-limit:]...)
+}
+
+func appendBoundedInference(existing []inference.Inference, inf inference.Inference, limit int) []inference.Inference {
+	if limit == 0 {
+		return nil
+	}
+
+	existing = append(existing, inf)
+	if len(existing) <= limit {
+		return existing
+	}
+
+	return append([]inference.Inference(nil), existing[len(existing)-limit:]...)
 }

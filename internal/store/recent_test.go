@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"ollama-telemetry/internal/activity"
+	"ollama-telemetry/internal/telemetry/inference"
 )
 
 func TestRecentKeepsBoundedChronologicalHistory(t *testing.T) {
@@ -42,6 +43,88 @@ func TestRecentKeepsBoundedChronologicalHistory(t *testing.T) {
 	}
 	if activities[2].Kind != activity.KindInferredModelChanged || activities[2].Model != "phi4" {
 		t.Fatalf("expected newest retained activity to be phi4 model changed, got %+v", activities[2])
+	}
+}
+
+// ---- task 4.9 RED: transition-aware snapshot dedup --------------------------
+
+func TestStore_NoNewEntryOnUnchangedPoll(t *testing.T) {
+	t.Parallel()
+
+	recent := NewRecent(10, 10)
+	base := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
+
+	// First poll: model "llama3" begins running — this IS a transition.
+	first := Snapshot{ObservedAt: base, ConfirmedModel: "llama3"}
+	changed := recent.RecordSnapshotOnTransition(first)
+	if !changed {
+		t.Fatal("expected first snapshot to be recorded (transition from empty to llama3)")
+	}
+
+	// Second poll: same model still running — NOT a transition.
+	second := Snapshot{ObservedAt: base.Add(5 * time.Second), ConfirmedModel: "llama3"}
+	changed = recent.RecordSnapshotOnTransition(second)
+	if changed {
+		t.Fatal("expected no new entry appended when model unchanged across polls")
+	}
+
+	// Third poll: same model, another 5s later — still NOT a transition.
+	third := Snapshot{ObservedAt: base.Add(10 * time.Second), ConfirmedModel: "llama3"}
+	changed = recent.RecordSnapshotOnTransition(third)
+	if changed {
+		t.Fatal("expected no new entry appended on second identical poll")
+	}
+
+	snapshots := recent.Snapshots()
+	if len(snapshots) != 1 {
+		t.Fatalf("expected exactly 1 snapshot after 3 identical-model polls, got %d", len(snapshots))
+	}
+	if snapshots[0].ConfirmedModel != "llama3" {
+		t.Fatalf("expected retained snapshot to be llama3, got %q", snapshots[0].ConfirmedModel)
+	}
+}
+
+// ---- task 4.11 RED: new entry on inference completion -----------------------
+
+func TestStore_NewEntryOnInferenceCompletion(t *testing.T) {
+	t.Parallel()
+
+	recent := NewRecent(10, 10)
+	base := time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC)
+
+	// Seed a baseline: model running, already recorded.
+	recent.RecordSnapshotOnTransition(Snapshot{ObservedAt: base, ConfirmedModel: "llama3"})
+
+	// A done:true completion arrives — this IS a genuine event, distinct from a poll.
+	completedInf := inference.Inference{
+		At:       base.Add(30 * time.Second),
+		Endpoint: "/api/generate",
+		Method:   "POST",
+		Model:    "llama3",
+		Status:   inference.PhaseCompleted,
+		Tokens: &inference.TokenStats{
+			EvalCount: 48,
+			PerSec:    20.0,
+			LatencyMS: 2600.0,
+		},
+	}
+
+	recent.RecordInferenceCompletion(completedInf)
+
+	// The inference feed should have one entry reflecting the completion.
+	events := recent.InferenceEvents()
+	if len(events) != 1 {
+		t.Fatalf("expected exactly 1 inference event after one completion, got %d", len(events))
+	}
+	evt := events[0]
+	if evt.Model != "llama3" {
+		t.Errorf("expected inference event model=llama3, got %q", evt.Model)
+	}
+	if evt.Status != inference.PhaseCompleted {
+		t.Errorf("expected inference event status=PhaseCompleted, got %v", evt.Status)
+	}
+	if evt.Tokens == nil || evt.Tokens.PerSec != 20.0 {
+		t.Errorf("expected tokens_per_sec=20.0 in inference event, got %v", evt.Tokens)
 	}
 }
 

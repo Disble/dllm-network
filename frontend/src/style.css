@@ -125,3 +125,207 @@ body {
   background: rgba(56, 189, 248, 0.16);
   color: #bae6fd;
 }
+
+/* =====================================================================
+   Deep-telemetry rework — dashboard layout + inference/model components
+   ===================================================================== */
+
+/* Page shell: dashboard-root is the single full-page wrapper. The legacy
+   dashboard-shell (inside DashboardPanel) is neutralised so it no longer
+   double-paints a full-viewport background. */
+.dashboard-root {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 32px;
+  background: radial-gradient(circle at top, #1e293b 0%, #020617 65%);
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.dashboard-root .dashboard-shell {
+  min-height: auto;
+  padding: 0;
+  background: none;
+}
+
+/* Constrain every top-level block to the same centred column. */
+.dashboard-root > .inference-feed,
+.dashboard-root > .inference-detail,
+.dashboard-root > .running-models {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* Shared card surface. */
+.inference-feed,
+.inference-detail,
+.running-model-card {
+  padding: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.88);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3);
+}
+
+/* Definition-list field grids (inference detail + model cards). */
+.inference-detail__fields,
+.running-model-card__fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 10px 28px;
+  margin: 16px 0 0;
+}
+
+.inference-detail__fields dt,
+.running-model-card__fields dt {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+  align-self: center;
+}
+
+.inference-detail__fields dd,
+.running-model-card__fields dd {
+  margin: 0;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Inference detail ---- */
+.inference-detail__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.inference-detail__model {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.inference-detail__status {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(56, 189, 248, 0.16);
+  color: #bae6fd;
+  font-size: 0.78rem;
+  text-transform: capitalize;
+}
+
+/* ---- Inference feed ---- */
+.inference-feed__banner {
+  display: block;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  border-radius: 12px;
+  background: rgba(250, 204, 21, 0.1);
+  color: #fde68a;
+  font-size: 0.9rem;
+}
+
+.inference-feed__banner p {
+  margin: 0;
+}
+
+.inference-feed__rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.inference-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: rgba(2, 6, 23, 0.45);
+}
+
+.inference-row__meta {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.inference-row__model {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.inference-row__endpoint {
+  color: #94a3b8;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.inference-row__status {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #7dd3fc;
+}
+
+.inference-row__metrics {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* ---- Running models grid ---- */
+.running-models {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.running-model-card__name {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.running-models__empty {
+  margin: 0;
+  color: #94a3b8;
+}
+
+/* ---- Metric pills (atoms) ---- */
+.token-rate-badge,
+.latency-pill {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.token-rate-badge {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+
+.latency-pill {
+  background: rgba(56, 189, 248, 0.16);
+  color: #bae6fd;
+}
+
+.token-rate-badge--unavailable,
+.latency-pill--unavailable {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+}

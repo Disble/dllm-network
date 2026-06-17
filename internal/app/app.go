@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"ollama-telemetry/internal/activity"
+	"ollama-telemetry/internal/capture"
 	"ollama-telemetry/internal/dashboard"
 	"ollama-telemetry/internal/store"
 	"ollama-telemetry/internal/telemetry"
@@ -14,6 +15,13 @@ import (
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+// newCaptureSource is a package-level func-var seam that mirrors newTicker /
+// newWailsEmitter. In production it returns the real WinDivert source; in
+// tests it is overridden via Dependencies.CaptureSource injection.
+var newCaptureSource = func() capture.CaptureSource {
+	return newWinDivertCapture()
+}
 
 const (
 	defaultOllamaBaseURL    = "http://127.0.0.1:11434"
@@ -36,10 +44,18 @@ type Orchestrator interface {
 }
 
 type Dependencies struct {
-	Window       Window
-	Orchestrator Orchestrator
-	TrayManager  tray.TrayManager
-	Config       telemetry.Config
+	Window        Window
+	Orchestrator  Orchestrator
+	TrayManager   tray.TrayManager
+	Config        telemetry.Config
+	// CaptureSource is the packet-capture Strategy port. When nil,
+	// NewWithDependencies falls back to the newCaptureSource func-var which
+	// returns the real WinDivert source (or noop on non-windows). Tests inject
+	// a fake source here to exercise the full pipeline without a driver.
+	CaptureSource capture.CaptureSource
+	// wailsEmitter overrides the default Wails runtime emitter. Used in tests
+	// to intercept emitted snapshots without a live Wails runtime.
+	wailsEmitter  wailsEmitter
 }
 
 type Status struct {
@@ -49,13 +65,16 @@ type Status struct {
 
 // App owns the Wails lifecycle hooks needed for the runtime shell slice.
 type App struct {
-	mu           sync.RWMutex
-	ctx          context.Context
-	window       Window
-	orchestrator Orchestrator
-	trayManager  tray.TrayManager
-	config       telemetry.Config
-	visible      bool
+	mu            sync.RWMutex
+	ctx           context.Context
+	window        Window
+	orchestrator  Orchestrator
+	trayManager   tray.TrayManager
+	config        telemetry.Config
+	visible       bool
+	captureSource capture.CaptureSource
+	pipeline      *inferencePipeline
+	emitter       wailsEmitter
 }
 
 // New creates the application binding used by Wails.
@@ -67,10 +86,21 @@ func New() *App {
 
 func NewWithDependencies(deps Dependencies) *App {
 	config := deps.Config.WithDefaults()
+
+	// Resolve emitter: use injected override (tests) or production Wails emitter.
+	emitter := deps.wailsEmitter
+	if emitter.emit == nil {
+		emitter = newWailsEmitter()
+	}
+
+	// Shared store for snapshot transitions and inference completions.
+	// Created once and shared between the orchestrator publisher and the
+	// capture pipeline so both write into the same bounded history.
+	recentStore := store.NewRecent(defaultRecentModelLimit, defaultRecentEventLimit)
+
 	orchestratorInstance := deps.Orchestrator
 	if orchestratorInstance == nil {
-		emitter := newWailsEmitter()
-		runtimePublisher := newRuntimePublisher(emitter)
+		runtimePublisher, _ := newRuntimePublisherShared(emitter, recentStore)
 		poller := ollama.NewPoller(ollama.NewClient(defaultOllamaBaseURL, nil, nil), nil)
 		orchestratorInstance = orchestrator.NewWithDependencies(config, orchestrator.Dependencies{
 			Poller:    poller,
@@ -83,11 +113,26 @@ func NewWithDependencies(deps Dependencies) *App {
 		window = wailsWindow{}
 	}
 
+	// Resolve capture source: use injected override or production source.
+	src := deps.CaptureSource
+	if src == nil {
+		src = newCaptureSource()
+	}
+
+	// The capture pipeline emits its own snapshots via a lightweight publisher
+	// that carries only CaptureInput + InferenceState (Ollama/System fields are
+	// zero — the frontend merges with the latest orchestrator-emitted snapshot).
+	pipelinePublisher := dashboard.NewPublisher(nil, recentStore, emitter)
+	pipeline := newInferencePipeline(src, recentStore, pipelinePublisher)
+
 	return &App{
-		window:       window,
-		orchestrator: orchestratorInstance,
-		trayManager:  deps.TrayManager,
-		config:       config,
+		window:        window,
+		orchestrator:  orchestratorInstance,
+		trayManager:   deps.TrayManager,
+		config:        config,
+		captureSource: src,
+		pipeline:      pipeline,
+		emitter:       emitter,
 	}
 }
 
@@ -97,9 +142,16 @@ func (app *App) Startup(ctx context.Context) {
 	app.ctx = ctx
 	app.visible = false
 	trayManager := app.trayManager
+	pipeline := app.pipeline
 	app.mu.Unlock()
 
 	_ = app.orchestrator.Start(ctx)
+
+	// Start the capture pipeline. Graceful degradation: if the source is not
+	// Active (unelevated, noop), the goroutine exits immediately without crash.
+	if pipeline != nil {
+		pipeline.run(ctx)
+	}
 
 	if trayManager != nil {
 		_ = trayManager.Start(tray.Config{
@@ -149,6 +201,7 @@ func (app *App) Quit() error {
 	app.mu.RLock()
 	ctx := app.operationContext()
 	timeout := app.config.ShutdownTimeout
+	pipeline := app.pipeline
 	app.mu.RUnlock()
 
 	shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -156,6 +209,12 @@ func (app *App) Quit() error {
 
 	if err := app.orchestrator.Stop(shutdownCtx); err != nil {
 		return err
+	}
+
+	// Stop the capture pipeline after the orchestrator — capture goroutine is
+	// cancelled and its context propagated through the shutdownCtx timeout.
+	if pipeline != nil {
+		pipeline.stop()
 	}
 
 	if app.trayManager != nil {
@@ -208,7 +267,18 @@ func (wailsWindow) Quit(ctx context.Context) {
 	wruntime.Quit(ctx)
 }
 
+// newRuntimePublisher creates the orchestrator snapshot publisher with a fresh
+// recent store (used in tests that don't need to share the store).
 func newRuntimePublisher(emitter dashboard.Emitter) orchestrator.SnapshotPublisher {
 	recent := store.NewRecent(defaultRecentModelLimit, defaultRecentEventLimit)
-	return newRuntimePublisherWithDependencies(activity.NewEngine(), recent, dashboard.NewPublisher(nil, recent, emitter))
+	pub := newRuntimePublisherWithDependencies(activity.NewEngine(), recent, dashboard.NewPublisher(nil, recent, emitter))
+	return pub
+}
+
+// newRuntimePublisherShared creates the orchestrator snapshot publisher wired
+// to a caller-supplied recent store. Used in NewWithDependencies to share the
+// store between the orchestrator publisher and the capture pipeline.
+func newRuntimePublisherShared(emitter dashboard.Emitter, recent *store.Recent) (orchestrator.SnapshotPublisher, *store.Recent) {
+	pub := newRuntimePublisherWithDependencies(activity.NewEngine(), recent, dashboard.NewPublisher(nil, recent, emitter))
+	return pub, recent
 }

@@ -30,8 +30,12 @@ type activityInferer interface {
 	Infer(activity.Input) activity.Event
 }
 
+// recentStore is the interface required by runtimePublisher.
+// It uses RecordSnapshotOnTransition (WU4/WU6) instead of RecordSnapshot so
+// the model-history feed does not accumulate near-duplicate rows from
+// repeated identical poll cycles.
 type recentStore interface {
-	RecordSnapshot(store.Snapshot)
+	RecordSnapshotOnTransition(store.Snapshot) bool
 	AppendActivity(activity.Event)
 	Snapshots() []store.Snapshot
 	Activities() []activity.Event
@@ -58,7 +62,9 @@ func newRuntimePublisherWithDependencies(engine activityInferer, recent recentSt
 func (publisher *runtimePublisher) Publish(ctx context.Context, input orchestrator.PublishInput) error {
 	confirmedModel := currentConfirmedModel(input)
 	if confirmedModel != "" {
-		publisher.recent.RecordSnapshot(store.Snapshot{
+		// WU6: transition-aware recording — suppresses duplicate poll cycles
+		// where the same model name is confirmed repeatedly with no change.
+		publisher.recent.RecordSnapshotOnTransition(store.Snapshot{
 			ObservedAt:     input.System.CollectedAt,
 			ConfirmedModel: confirmedModel,
 		})

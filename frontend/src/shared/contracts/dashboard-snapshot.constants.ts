@@ -3,8 +3,9 @@ import { PHASE_IN_PROGRESS } from './dashboard-snapshot.types';
 
 /**
  * EMPTY_INFERENCE_EVENT is a zero-value InferenceEvent used as the bootstrap current event.
+ * Internal to this file — used as the `current` field in EMPTY_DASHBOARD_SNAPSHOT.
  */
-export const EMPTY_INFERENCE_EVENT: InferenceEvent = {
+const EMPTY_INFERENCE_EVENT: InferenceEvent = {
   at: '',
   endpoint: '',
   method: '',

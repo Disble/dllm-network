@@ -16,6 +16,7 @@ export function formatTimestamp(value: string): string {
 
 /**
  * formatBytes renders byte counts into small human-readable labels.
+ * Handles B, KB, MB, and GB ranges.
  */
 export function formatBytes(value: number): string {
   if (value <= 0) {
@@ -30,5 +31,42 @@ export function formatBytes(value: number): string {
     return `${(value / 1024).toFixed(1)} KB`;
   }
 
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value < 1024 * 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+/**
+ * formatExpiresAt renders an ISO-8601 expires_at timestamp as a relative time label.
+ * Returns "—" when the value is empty or unparseable.
+ * Returns the formatted time if more than 0 seconds remain; "expired" if in the past.
+ */
+export function formatExpiresAt(value: string, now?: Date): string {
+  if (value === '') {
+    return '—';
+  }
+
+  const expiresDate = new Date(value);
+  if (Number.isNaN(expiresDate.getTime())) {
+    return '—';
+  }
+
+  const referenceTime = now ?? new Date();
+  const diffMs = expiresDate.getTime() - referenceTime.getTime();
+
+  if (diffMs <= 0) {
+    return 'expired';
+  }
+
+  const diffSec = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(diffSec / 60);
+  const seconds = diffSec % 60;
+
+  if (minutes === 0) {
+    return `in ${seconds}s`;
+  }
+
+  return `in ${minutes}m ${seconds}s`;
 }

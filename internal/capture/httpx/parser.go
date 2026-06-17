@@ -134,6 +134,13 @@ func (p *Parser) Feed(data []byte) []Message {
 // Returns any messages produced (none from headers alone) and whether progress
 // was made (i.e. headers were fully consumed).
 func (p *Parser) consumeHeaders() ([]Message, bool) {
+	// Resync: when capture attaches to a pre-existing keep-alive connection the
+	// first bytes are the tail of an earlier message. Discard anything that is
+	// not the start of a valid HTTP start-line so we lock onto the next message.
+	if !p.ensureStartLine() {
+		return nil, false // only garbage so far — wait for more bytes
+	}
+
 	sep := []byte("\r\n\r\n")
 	idx := bytes.Index(p.buf, sep)
 	if idx < 0 {
@@ -164,6 +171,81 @@ func (p *Parser) consumeHeaders() ([]Message, bool) {
 	}
 
 	return nil, true
+}
+
+// ensureStartLine discards leading bytes that are not the beginning of a valid
+// HTTP start-line (request-line or status-line), enabling the parser to resync
+// after attaching to a connection mid-stream. Returns true when the buffer
+// begins at — or at a plausible partial prefix of — a start-line; false when
+// only garbage is present so far and the caller should wait for more bytes.
+func (p *Parser) ensureStartLine() bool {
+	for {
+		if len(p.buf) == 0 {
+			return false
+		}
+		nl := bytes.IndexByte(p.buf, '\n')
+		complete := nl >= 0
+		line := p.buf
+		if complete {
+			line = p.buf[:nl]
+		}
+		if n := len(line); n > 0 && line[n-1] == '\r' {
+			line = line[:n-1]
+		}
+
+		if isStartLine(line, complete) {
+			return true
+		}
+		if !complete {
+			// Garbage with no line terminator yet — drop it to bound memory.
+			p.buf = p.buf[:0]
+			return false
+		}
+		// Complete garbage line — discard it (with its \n) and re-check.
+		p.buf = p.buf[nl+1:]
+	}
+}
+
+// isStartLine reports whether line is, or could be a partial prefix of, a valid
+// HTTP request-line ("METHOD SP target SP HTTP/x.y") or status-line ("HTTP/x.y
+// CODE ..."). When complete is false the line may be only partially received.
+func isStartLine(line []byte, complete bool) bool {
+	// Status-line.
+	if bytes.HasPrefix(line, []byte("HTTP/")) {
+		return true
+	}
+	if !complete && isBytePrefix(line, []byte("HTTP/")) {
+		return true // partial "HTTP/" prefix — wait for the rest
+	}
+
+	// Request-line.
+	sp := bytes.IndexByte(line, ' ')
+	if sp < 0 {
+		// No space yet: only plausible as a partial uppercase method token.
+		return !complete && len(line) > 0 && len(line) <= 8 && isUpperAlpha(line)
+	}
+	method := line[:sp]
+	if len(method) == 0 || len(method) > 8 || !isUpperAlpha(method) {
+		return false
+	}
+	if complete {
+		return bytes.Contains(line, []byte(" HTTP/"))
+	}
+	return true // valid method + space, rest still arriving
+}
+
+func isUpperAlpha(b []byte) bool {
+	for _, c := range b {
+		if c < 'A' || c > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
+// isBytePrefix reports whether p is a prefix of full.
+func isBytePrefix(p, full []byte) bool {
+	return len(p) <= len(full) && bytes.Equal(p, full[:len(p)])
 }
 
 // consumeBody reads a Content-Length body and emits a single Message.

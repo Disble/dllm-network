@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 
 import type { DashboardSnapshotSource } from '../../infrastructure/dashboard-snapshot-source';
-import { formatTimestamp } from '../../shared/helpers/formatters.helpers';
+import { formatClockDateTime } from '../../shared/helpers/formatters.helpers';
 import { connectInferenceStore, useInferenceStore } from '../../shared/store/inference-store';
 import { computeAggregates } from '../../shared/store/inference-store.helpers';
 import type { UseInferenceMetricsResult } from './inference-explorer.types';
@@ -36,7 +36,7 @@ export function useInferenceMetrics(source?: DashboardSnapshotSource): UseInfere
       { label: 'Eval count', value: String(aggregates.totalEvalCount), caption: 'Total' },
       {
         label: 'Timestamp',
-        value: aggregates.lastUpdated === '' ? '—' : formatTimestamp(aggregates.lastUpdated),
+        value: aggregates.lastUpdated === '' ? '—' : formatClockDateTime(aggregates.lastUpdated),
         caption: 'Last Updated',
       },
     ];

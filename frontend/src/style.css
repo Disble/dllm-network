@@ -48,6 +48,32 @@
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
+
+  /* Themed scrollbars (standard properties — inherited by all scroll areas). */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* WebView2 / Chromium scrollbar theming to match the near-black surface. */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--charcoal);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 body {
@@ -231,8 +257,11 @@ body {
 
 .inference-detail__fields dd {
   margin: 0;
+  min-width: 0;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+  /* Long header values (Cookie, User-Agent, …) wrap instead of overflowing. */
+  overflow-wrap: anywhere;
 }
 
 /* ---- Inference detail ---- */
@@ -530,7 +559,7 @@ body {
 .inference-table__head,
 .inference-table__row {
   display: grid;
-  grid-template-columns: 1.4fr 1.7fr 0.7fr 1fr 0.7fr 1fr 1fr 0.9fr;
+  grid-template-columns: 1.3fr 1.5fr 0.85fr 1.05fr 0.7fr 0.95fr 1fr 0.85fr;
   align-items: center;
   gap: 10px;
   padding: 0 14px;
@@ -540,7 +569,7 @@ body {
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
   font-size: 0.66rem;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text-subtle);
 }
@@ -548,6 +577,7 @@ body {
   position: relative;
   height: 60vh;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 .inference-table__viewport {
   position: relative;
@@ -631,6 +661,7 @@ body {
 .inference-detail {
   position: sticky;
   top: 24px;
+  min-width: 0;
 }
 .inference-detail__header {
   display: flex;
@@ -860,6 +891,7 @@ body {
   flex-direction: column;
   gap: 6px;
   padding: 16px 20px;
+  min-width: 0;
   background: var(--surface);
 }
 .kpi-strip__label {
@@ -871,10 +903,13 @@ body {
 }
 .kpi-strip__value {
   margin: 0;
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 600;
+  line-height: 1.2;
   color: var(--text);
   font-variant-numeric: tabular-nums;
+  /* Long values (e.g. the timestamp) wrap cleanly instead of clipping. */
+  overflow-wrap: anywhere;
 }
 .kpi-strip__caption {
   margin: 0;

@@ -9,12 +9,13 @@ import type { InferenceDetailCodeBlockProps } from './inference-detail.types';
  * toggle when a `pretty` form is supplied (Pretty default), and always exposes a
  * Copy button that copies the verbatim `raw` text regardless of the current view.
  */
-export function InferenceDetailCodeBlock({ raw, pretty, truncated }: Readonly<InferenceDetailCodeBlockProps>) {
+export function InferenceDetailCodeBlock({ raw, pretty, streamCount, truncated }: Readonly<InferenceDetailCodeBlockProps>) {
   const [view, setView] = useState<'pretty' | 'raw'>('pretty');
   const [copied, setCopied] = useState(false);
 
   const hasPretty = pretty !== undefined && pretty !== null;
   const shown = hasPretty && view === 'pretty' ? pretty : raw;
+  const isStream = streamCount !== undefined && streamCount > 1;
 
   const handleCopy = () => {
     void window.navigator.clipboard?.writeText(raw);
@@ -45,6 +46,7 @@ export function InferenceDetailCodeBlock({ raw, pretty, truncated }: Readonly<In
             </button>
           </div>
         ) : null}
+        {isStream ? <span className="inference-detail__stream-badge">{streamCount} events</span> : null}
         <button type="button" className="inference-detail__copy" onClick={handleCopy}>
           {copied ? 'Copied' : 'Copy'}
         </button>

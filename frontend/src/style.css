@@ -717,8 +717,23 @@ body {
   gap: 4px;
   margin: 16px 0 12px;
   border-bottom: 1px solid var(--border);
+  /* Small windows: let the tab strip scroll horizontally instead of wrapping
+     or overflowing the panel. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.inference-detail__tabs::-webkit-scrollbar {
+  height: 6px;
+}
+.inference-detail__tabs::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
 }
 .inference-detail__tab {
+  flex: none;
+  white-space: nowrap;
   padding: 8px 12px;
   border: none;
   background: transparent;
@@ -775,6 +790,18 @@ body {
 /* When only Copy is present (no toggle), keep it right-aligned. */
 .inference-detail__code-toolbar:has(.inference-detail__copy:only-child) {
   justify-content: flex-end;
+}
+.inference-detail__stream-badge {
+  margin-left: auto;
+  align-self: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .inference-detail__copy {
   appearance: none;

@@ -58,4 +58,18 @@ describe('InferenceDetailCodeBlock', () => {
     fireEvent.click(screen.getByRole('button', { name: /copy/i }));
     expect(writeText).toHaveBeenCalledWith('plain text');
   });
+
+  it('shows an "N events" badge for a multi-document stream', () => {
+    render(createElement(InferenceDetailCodeBlock, {
+      raw: '{"a":1}\n{"b":2}\n{"c":3}',
+      pretty: '{\n  "a": 1\n}\n{\n  "b": 2\n}\n{\n  "c": 3\n}',
+      streamCount: 3,
+    }));
+    expect(screen.getByText(/3 events/i)).toBeTruthy();
+  });
+
+  it('omits the events badge for a single document', () => {
+    render(createElement(InferenceDetailCodeBlock, { raw: '{"a":1}', pretty: '{\n  "a": 1\n}', streamCount: 1 }));
+    expect(screen.queryByText(/events/i)).toBeNull();
+  });
 });

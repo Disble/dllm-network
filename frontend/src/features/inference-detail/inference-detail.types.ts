@@ -114,6 +114,8 @@ export interface InferenceDetailCodeBlockProps {
   readonly raw: string;
   /** Pretty-printed form. When present, enables the Pretty/Raw toggle (Pretty default). */
   readonly pretty?: string | null;
+  /** Number of JSON documents in a stream body; when > 1 an "N events" badge is shown. */
+  readonly streamCount?: number;
   /** Whether the underlying body was truncated at the capture byte cap. */
   readonly truncated?: boolean;
 }

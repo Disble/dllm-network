@@ -9,6 +9,7 @@ bin/
 *.exe
 *.test
 coverage.out
+.ignore/
 
 # Coverage and tooling artifacts
 coverage

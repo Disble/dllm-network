@@ -133,28 +133,14 @@ func TestCapturePipeline_FakeSourceSegmentsReachEmitter(t *testing.T) {
 
 	app.Startup(ctx)
 
-	// Wait until at least one snapshot with a completed inference is emitted.
-	deadline := time.Now().Add(1500 * time.Millisecond)
-	var foundInference bool
-	for time.Now().Before(deadline) {
-		for _, snap := range emitted {
-			if snap.Inference.Current.Status == 1 { // PhaseCompleted == 1
-				foundInference = true
-				// PassiveLimitMode should reflect capture-active.
-				if snap.Passive.Mode != "capture-active" {
-					t.Errorf("expected passive mode 'capture-active', got %q", snap.Passive.Mode)
-				}
-				break
-			}
-		}
-		if foundInference {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-
+	snap, foundInference := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+		return snap.Inference.Current.Status == inference.PhaseCompleted
+	})
 	if !foundInference {
 		t.Fatalf("no emitted snapshot with PhaseCompleted inference within timeout; got %d snapshots", len(emitted))
+	}
+	if snap.Passive.Mode != "capture-active" {
+		t.Errorf("expected passive mode 'capture-active', got %q", snap.Passive.Mode)
 	}
 }
 
@@ -188,18 +174,10 @@ func TestCapturePipeline_AssemblesDetailFields(t *testing.T) {
 	defer cancel()
 	app.Startup(ctx)
 
-	deadline := time.Now().Add(1500 * time.Millisecond)
-	var done *dashboard.Snapshot
-	for time.Now().Before(deadline) && done == nil {
-		for i := range emitted {
-			if emitted[i].Inference.Current.Status == 1 { // PhaseCompleted
-				done = &emitted[i]
-				break
-			}
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	if done == nil {
+	done, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+		return snap.Inference.Current.Status == inference.PhaseCompleted
+	})
+	if !found {
 		t.Fatalf("no completed inference within timeout; got %d snapshots", len(emitted))
 	}
 
@@ -232,6 +210,28 @@ func hasHeader(headers []inference.Header, name string) bool {
 		}
 	}
 	return false
+}
+
+func waitForSnapshot(emitted *[]dashboard.Snapshot, timeout time.Duration, match func(dashboard.Snapshot) bool) (dashboard.Snapshot, bool) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if snap, found := findSnapshot(*emitted, match); found {
+			return snap, true
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	return dashboard.Snapshot{}, false
+}
+
+func findSnapshot(emitted []dashboard.Snapshot, match func(dashboard.Snapshot) bool) (dashboard.Snapshot, bool) {
+	for _, snap := range emitted {
+		if match(snap) {
+			return snap, true
+		}
+	}
+
+	return dashboard.Snapshot{}, false
 }
 
 // TestCapturePipeline_PairsAcrossSwappedTuples asserts that a request and its
@@ -367,20 +367,11 @@ func TestCapturePipeline_EmitsInProgressOnRequest(t *testing.T) {
 	defer cancel()
 	app.Startup(ctx)
 
-	deadline := time.Now().Add(1500 * time.Millisecond)
-	var inProgress *dashboard.Snapshot
-	for time.Now().Before(deadline) && inProgress == nil {
-		for i := range emitted {
-			cur := emitted[i].Inference.Current
-			if cur.Endpoint == "/api/generate" && cur.Status == inference.PhaseInProgress {
-				inProgress = &emitted[i]
-				break
-			}
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-
-	if inProgress == nil {
+	inProgress, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+		cur := snap.Inference.Current
+		return cur.Endpoint == "/api/generate" && cur.Status == inference.PhaseInProgress
+	})
+	if !found {
 		t.Fatalf("expected an in-progress inference emitted on request observation (before any response); got %d snapshots", len(emitted))
 	}
 	cur := inProgress.Inference.Current
@@ -423,19 +414,11 @@ func TestCapturePipeline_OpenAIChatCompletions(t *testing.T) {
 	defer cancel()
 	app.Startup(ctx)
 
-	deadline := time.Now().Add(1500 * time.Millisecond)
-	var done *dashboard.Snapshot
-	for time.Now().Before(deadline) && done == nil {
-		for i := range emitted {
-			cur := emitted[i].Inference.Current
-			if cur.Endpoint == "/v1/chat/completions" && cur.Status == 1 { // PhaseCompleted
-				done = &emitted[i]
-				break
-			}
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	if done == nil {
+	done, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+		cur := snap.Inference.Current
+		return cur.Endpoint == "/v1/chat/completions" && cur.Status == inference.PhaseCompleted
+	})
+	if !found {
 		t.Fatalf("no completed /v1/chat/completions inference; got %d snapshots", len(emitted))
 	}
 

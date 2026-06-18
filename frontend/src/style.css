@@ -1,6 +1,50 @@
 :root {
-  color: #e2e8f0;
-  background: #020617;
+  /* ===================================================================
+     Design tokens — Coolors palette
+     https://coolors.co/0d0e0f-4b4c4e-08090b-38393a-0e0f11
+     Near-black, flat, monochrome. Hue-less neutral accent; muted
+     semantic status only. Change the theme HERE — components consume tokens.
+     =================================================================== */
+  --onyx: #0d0e0f;
+  --charcoal: #4b4c4e;
+  --true-black: #08090b;
+  --gunmetal: #38393a;
+  --onyx-2: #0e0f11;
+
+  /* Surfaces — layered by subtle lightness; borders do the separation. */
+  --bg: var(--true-black);
+  --surface: var(--onyx-2);
+  --surface-2: #131416;
+  --row-hover: rgba(255, 255, 255, 0.035);
+  --row-selected: rgba(255, 255, 255, 0.07);
+
+  /* Hairline borders derived from charcoal. */
+  --border: rgba(75, 76, 78, 0.3);
+  --border-strong: rgba(75, 76, 78, 0.55);
+  --border-subtle: rgba(75, 76, 78, 0.16);
+  --track: rgba(75, 76, 78, 0.22);
+
+  /* Text ramp. */
+  --text: #ececee;
+  --text-muted: #9b9c9f;
+  --text-subtle: #6d6e71;
+
+  /* Neutral light accent — no hue, matches the monochrome palette. */
+  --accent: #ededf0;
+  --accent-soft: rgba(255, 255, 255, 0.06);
+
+  /* Muted semantic status (kept low-saturation to fit the dark monochrome). */
+  --success: #84b89a;
+  --warn: #cbb074;
+  --warn-bg: rgba(203, 176, 116, 0.12);
+  --warn-border: rgba(203, 176, 116, 0.3);
+  --error: #cc8585;
+  --error-bg: rgba(204, 133, 133, 0.14);
+
+  --shadow-color: rgba(0, 0, 0, 0.5);
+
+  color: var(--text);
+  background: var(--bg);
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
@@ -21,16 +65,16 @@ body {
   display: grid;
   place-items: center;
   padding: 32px;
-  background: radial-gradient(circle at top, #1e293b 0%, #020617 65%);
+  background: var(--bg);
 }
 
 .hero-card {
   max-width: 640px;
   padding: 32px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: rgba(15, 23, 42, 0.88);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.45);
+  background: var(--surface);
+  box-shadow: 0 24px 80px var(--shadow-color);
 }
 
 .eyebrow {
@@ -38,7 +82,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-size: 0.8rem;
-  color: #38bdf8;
+  color: var(--text-subtle);
 }
 
 .hero-card h1 {
@@ -48,13 +92,13 @@ body {
 
 .body-copy {
   margin: 0;
-  color: #cbd5e1;
+  color: var(--text-muted);
 }
 
 .dashboard-shell {
   min-height: 100vh;
   padding: 32px;
-  background: radial-gradient(circle at top, #1e293b 0%, #020617 65%);
+  background: var(--bg);
 }
 
 .dashboard-header {
@@ -76,10 +120,10 @@ body {
 
 .metric-card {
   padding: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: rgba(15, 23, 42, 0.88);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3);
+  background: var(--surface);
+  box-shadow: 0 24px 80px var(--shadow-color);
 }
 
 .metric-card h2 {
@@ -88,7 +132,7 @@ body {
 }
 
 .accent-card {
-  border-color: rgba(56, 189, 248, 0.35);
+  border-color: var(--border-strong);
 }
 
 .wide-card {
@@ -100,13 +144,13 @@ body {
   font-size: 0.78rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #7dd3fc;
+  color: var(--text-subtle);
 }
 
 .metric-list {
   margin: 0;
   padding-left: 18px;
-  color: #cbd5e1;
+  color: var(--text-muted);
 }
 
 .metric-list li + li {
@@ -115,15 +159,15 @@ body {
 
 .confidence-text {
   margin: 0 0 12px;
-  color: #facc15;
+  color: var(--warn);
 }
 
 .status-pill {
   margin: 0;
   padding: 8px 12px;
   border-radius: 999px;
-  background: rgba(56, 189, 248, 0.16);
-  color: #bae6fd;
+  background: var(--accent-soft);
+  color: var(--text);
 }
 
 /* =====================================================================
@@ -137,7 +181,7 @@ body {
   min-height: 100vh;
   box-sizing: border-box;
   padding: clamp(12px, 2vw, 32px);
-  background: radial-gradient(circle at top, #1e293b 0%, #020617 65%);
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   gap: clamp(12px, 1.5vw, 24px);
@@ -163,10 +207,10 @@ body {
 .inference-detail,
 .running-model-card {
   padding: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: rgba(15, 23, 42, 0.88);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3);
+  background: var(--surface);
+  box-shadow: 0 24px 80px var(--shadow-color);
 }
 
 /* Definition-list field grids (inference detail + model cards). */
@@ -184,14 +228,14 @@ body {
   font-size: 0.72rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7dd3fc;
+  color: var(--text-subtle);
   align-self: center;
 }
 
 .inference-detail__fields dd,
 .running-model-card__fields dd {
   margin: 0;
-  color: #e2e8f0;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
@@ -211,8 +255,8 @@ body {
 .inference-detail__status {
   padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(56, 189, 248, 0.16);
-  color: #bae6fd;
+  background: var(--surface-2);
+  color: var(--text-muted);
   font-size: 0.78rem;
   text-transform: capitalize;
 }
@@ -225,10 +269,10 @@ body {
   min-width: 0;
   min-height: 100%;
   padding: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--border);
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.72);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+  background: var(--surface);
+  box-shadow: 0 24px 80px var(--shadow-color);
 }
 
 .running-models__header {
@@ -240,7 +284,7 @@ body {
 
 .running-models__count {
   margin: 0;
-  color: #94a3b8;
+  color: var(--text-subtle);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
 }
@@ -254,7 +298,7 @@ body {
 .running-model-card__name {
   font-size: 1.1rem;
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--text);
 }
 
 .running-models__empty {
@@ -263,37 +307,29 @@ body {
   place-items: center;
   min-height: clamp(220px, 30vh, 360px);
   padding: 32px 12px;
-  border: 1px dashed rgba(148, 163, 184, 0.22);
+  border: 1px dashed var(--border);
   border-radius: 12px;
   box-sizing: border-box;
-  color: #94a3b8;
+  color: var(--text-subtle);
 }
 
 /* ---- Metric pills (atoms) ---- */
+/* Monochrome: rate + latency read as plain tabular text, matching the
+   reference dashboard (no coloured pills in the request table). */
 .token-rate-badge,
 .latency-pill {
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 0.8rem;
+  padding: 0;
+  font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.token-rate-badge {
-  background: rgba(34, 197, 94, 0.16);
-  color: #86efac;
-}
-
-.latency-pill {
-  background: rgba(56, 189, 248, 0.16);
-  color: #bae6fd;
+  color: var(--text);
 }
 
 .token-rate-badge--unavailable,
 .latency-pill--unavailable,
 .status-code-pill--unavailable {
-  background: rgba(148, 163, 184, 0.12);
-  color: #94a3b8;
+  background: none;
+  color: var(--text-subtle);
 }
 
 /* =====================================================================
@@ -316,10 +352,10 @@ body {
   min-width: 0;
   height: 100%;
   padding: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--border);
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.72);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+  background: var(--surface);
+  box-shadow: 0 24px 80px var(--shadow-color);
 }
 
 .dashboard-root .dashboard-header {
@@ -350,7 +386,7 @@ body {
   border-radius: 14px;
   min-width: 0;
   box-shadow: none;
-  background: rgba(2, 6, 23, 0.38);
+  background: var(--surface-2);
 }
 
 .dashboard-root .metric-card h2 {
@@ -392,10 +428,10 @@ body {
 .inference-explorer {
   min-width: 0;
   padding: 20px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--border);
   border-radius: 18px;
-  background: rgba(15, 23, 42, 0.88);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3);
+  background: var(--surface);
+  box-shadow: 0 24px 80px var(--shadow-color);
 }
 
 .inference-explorer__toolbar {
@@ -412,10 +448,10 @@ body {
   display: block;
   margin: 0 0 16px;
   padding: 12px 16px;
-  border: 1px solid rgba(250, 204, 21, 0.35);
+  border: 1px solid var(--warn-border);
   border-radius: 12px;
-  background: rgba(250, 204, 21, 0.1);
-  color: #fde68a;
+  background: var(--warn-bg);
+  color: var(--warn);
   font-size: 0.9rem;
 }
 
@@ -434,14 +470,14 @@ body {
   font-size: 0.62rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #7dd3fc;
+  color: var(--text-subtle);
 }
 .inference-aggregates__item dd {
   margin: 0;
   font-size: 1.05rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  color: #f1f5f9;
+  color: var(--text);
 }
 
 /* ---- Filter bar ---- */
@@ -452,10 +488,10 @@ body {
 .inference-filter-bar__search,
 .inference-filter-bar__status {
   padding: 8px 12px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(2, 6, 23, 0.6);
-  color: #e2e8f0;
+  background: var(--surface-2);
+  color: var(--text);
   font-size: 0.85rem;
 }
 .inference-filter-bar__search {
@@ -464,12 +500,12 @@ body {
 .inference-filter-bar__search:focus,
 .inference-filter-bar__status:focus {
   outline: none;
-  border-color: rgba(56, 189, 248, 0.6);
+  border-color: var(--accent);
 }
 
 /* ---- Virtualized table ---- */
 .inference-table {
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
 }
@@ -483,12 +519,12 @@ body {
 }
 .inference-table__head {
   height: 38px;
-  background: rgba(2, 6, 23, 0.6);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
   font-size: 0.66rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #7dd3fc;
+  color: var(--text-subtle);
 }
 .inference-table__scroll {
   position: relative;
@@ -501,20 +537,20 @@ body {
 }
 .inference-table__row {
   border: none;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  border-bottom: 1px solid var(--border-subtle);
   background: transparent;
-  color: #e2e8f0;
+  color: var(--text);
   font-size: 0.85rem;
   text-align: left;
   cursor: pointer;
   font-family: inherit;
 }
 .inference-table__row:hover {
-  background: rgba(56, 189, 248, 0.07);
+  background: var(--row-hover);
 }
 .inference-table__row--selected {
-  background: rgba(56, 189, 248, 0.16);
-  box-shadow: inset 3px 0 0 #38bdf8;
+  background: var(--row-selected);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .inference-table__cell {
   min-width: 0;
@@ -524,49 +560,53 @@ body {
 }
 .inference-table__cell--model {
   font-weight: 600;
-  color: #f1f5f9;
+  color: var(--text);
 }
 .inference-table__cell--endpoint {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.78rem;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 .inference-table__cell--status,
 .inference-table__cell--method {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #cbd5e1;
+  color: var(--text-muted);
 }
 .inference-table__cell--time {
   font-variant-numeric: tabular-nums;
-  color: #94a3b8;
+  color: var(--text-subtle);
   font-size: 0.78rem;
 }
 .inference-table__empty {
   padding: 40px 16px;
   text-align: center;
-  color: #94a3b8;
+  color: var(--text-subtle);
 }
 
 /* ---- Status code pill ---- */
+/* 2xx reads as a neutral chip (matches the reference); only 3xx/4xx/5xx
+   carry a muted semantic tint so problems still stand out. */
 .status-code-pill {
   padding: 4px 8px;
   border-radius: 999px;
   font-size: 0.74rem;
   font-variant-numeric: tabular-nums;
+  background: var(--surface-2);
+  color: var(--text-muted);
 }
 .status-code-pill--ok {
-  background: rgba(34, 197, 94, 0.16);
-  color: #86efac;
+  background: var(--surface-2);
+  color: var(--text-muted);
 }
 .status-code-pill--redirect {
-  background: rgba(250, 204, 21, 0.16);
-  color: #fde68a;
+  background: var(--warn-bg);
+  color: var(--warn);
 }
 .status-code-pill--error {
-  background: rgba(248, 113, 113, 0.16);
-  color: #fca5a5;
+  background: var(--error-bg);
+  color: var(--error);
 }
 
 /* ---- Detail: tabbed inspector ---- */
@@ -583,30 +623,30 @@ body {
   margin: 0;
   padding: 48px 8px;
   text-align: center;
-  color: #94a3b8;
+  color: var(--text-subtle);
 }
 .inference-detail__tabs {
   display: flex;
   gap: 4px;
   margin: 16px 0 12px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  border-bottom: 1px solid var(--border);
 }
 .inference-detail__tab {
   padding: 8px 12px;
   border: none;
   background: transparent;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 0.8rem;
   font-family: inherit;
   cursor: pointer;
   border-bottom: 2px solid transparent;
 }
 .inference-detail__tab:hover {
-  color: #e2e8f0;
+  color: var(--text);
 }
 .inference-detail__tab--active {
-  color: #f1f5f9;
-  border-bottom-color: #38bdf8;
+  color: var(--text);
+  border-bottom-color: var(--accent);
 }
 .inference-detail__tabpanel {
   min-height: 120px;
@@ -614,15 +654,15 @@ body {
 .inference-detail__not-captured {
   margin: 0;
   padding: 24px 8px;
-  color: #94a3b8;
+  color: var(--text-subtle);
   font-size: 0.85rem;
 }
 .inference-detail__code {
   margin: 0;
   padding: 14px;
   border-radius: 10px;
-  background: rgba(2, 6, 23, 0.7);
-  color: #cbd5e1;
+  background: var(--surface-2);
+  color: var(--text-muted);
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 0.78rem;
   line-height: 1.5;
@@ -633,7 +673,7 @@ body {
 }
 .inference-detail__truncated {
   margin: 8px 0 0;
-  color: #fde68a;
+  color: var(--warn);
   font-size: 0.76rem;
 }
 .inference-detail__header-group + .inference-detail__header-group {
@@ -643,14 +683,14 @@ body {
   display: contents;
 }
 
-/* ---- Timing bar ---- */
+/* ---- Timing bar (grayscale waterfall: load -> eval -> other) ---- */
 .timing-bar {
   display: flex;
   width: 100%;
   height: 14px;
   border-radius: 7px;
   overflow: hidden;
-  background: rgba(148, 163, 184, 0.12);
+  background: var(--track);
   margin-bottom: 16px;
 }
 .timing-bar--unavailable {
@@ -658,19 +698,19 @@ body {
   width: auto;
   height: auto;
   background: none;
-  color: #94a3b8;
+  color: var(--text-subtle);
 }
 .timing-bar__segment {
   height: 100%;
 }
 .timing-bar__segment--load {
-  background: #a78bfa;
+  background: var(--charcoal);
 }
 .timing-bar__segment--eval {
-  background: #34d399;
+  background: var(--text-muted);
 }
 .timing-bar__segment--other {
-  background: rgba(148, 163, 184, 0.35);
+  background: var(--track);
 }
 
 @media (max-width: 980px) {

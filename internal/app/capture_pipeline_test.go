@@ -3,12 +3,14 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"ollama-telemetry/internal/capture"
 	"ollama-telemetry/internal/dashboard"
 	"ollama-telemetry/internal/telemetry"
+	"ollama-telemetry/internal/telemetry/inference"
 	"ollama-telemetry/internal/telemetry/orchestrator"
 )
 
@@ -154,6 +156,82 @@ func TestCapturePipeline_FakeSourceSegmentsReachEmitter(t *testing.T) {
 	if !foundInference {
 		t.Fatalf("no emitted snapshot with PhaseCompleted inference within timeout; got %d snapshots", len(emitted))
 	}
+}
+
+// TestCapturePipeline_AssemblesDetailFields asserts the pipeline surfaces the
+// DevTools-Network detail fields: a stable id, the captured request body and
+// headers, the response status code, and the response body ASSEMBLED across the
+// streamed NDJSON lines (not just the terminal line).
+func TestCapturePipeline_AssemblesDetailFields(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	baseTime := time.Now()
+	tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+	segments := []capture.Segment{
+		{Tuple: tuple, Dir: capture.DirToServer, Payload: buildFakeGenerateRequest(), SeqNo: 0, At: baseTime},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: buildFakeGenerateResponse(), SeqNo: 0, At: baseTime.Add(time.Millisecond)},
+	}
+
+	var emitted []dashboard.Snapshot
+	emitFn := func(ctx context.Context, event string, payload ...any) {
+		if event == dashboard.TopicDashboardSnapshot {
+			if snap, ok := payload[0].(dashboard.Snapshot); ok {
+				emitted = append(emitted, snap)
+			}
+		}
+	}
+
+	app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	var done *dashboard.Snapshot
+	for time.Now().Before(deadline) && done == nil {
+		for i := range emitted {
+			if emitted[i].Inference.Current.Status == 1 { // PhaseCompleted
+				done = &emitted[i]
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if done == nil {
+		t.Fatalf("no completed inference within timeout; got %d snapshots", len(emitted))
+	}
+
+	cur := done.Inference.Current
+	if cur.ID == "" {
+		t.Error("expected a stable non-empty inference id")
+	}
+	if cur.StatusCode != 200 {
+		t.Errorf("StatusCode: got %d, want 200", cur.StatusCode)
+	}
+	if !strings.Contains(cur.RequestBody, "llama3") {
+		t.Errorf("RequestBody should contain the prompt JSON, got %q", cur.RequestBody)
+	}
+	if !hasHeader(cur.RequestHeaders, "Content-Type") {
+		t.Errorf("RequestHeaders missing Content-Type: %+v", cur.RequestHeaders)
+	}
+	// Assembled response must include BOTH the streamed line and the terminal line.
+	if !strings.Contains(cur.ResponseBody, `"response":"hi"`) {
+		t.Errorf("ResponseBody missing the streamed line, got %q", cur.ResponseBody)
+	}
+	if !strings.Contains(cur.ResponseBody, `"done":true`) {
+		t.Errorf("ResponseBody missing the terminal line, got %q", cur.ResponseBody)
+	}
+}
+
+func hasHeader(headers []inference.Header, name string) bool {
+	for _, h := range headers {
+		if h.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // TestCapturePipeline_PairsAcrossSwappedTuples asserts that a request and its

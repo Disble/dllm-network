@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"ollama-telemetry/internal/capture"
 	"ollama-telemetry/internal/capture/httpx"
@@ -103,6 +104,19 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 	// we can pair it with the terminal response.
 	requestBuf := make(map[reassembly.FourTuple]httpx.Message)
 
+	// reqID holds the stable inference id assigned when a request is buffered.
+	// Every Inference derived from that request (in-progress lines and the
+	// terminal completion) shares this id so the frontend upserts one row.
+	reqID := make(map[reassembly.FourTuple]string)
+
+	// respAccum accumulates the raw response bytes (NDJSON lines joined) per
+	// connection so the assembled response body can be surfaced in the detail
+	// inspector. Reset when a new request begins on the same keep-alive tuple.
+	respAccum := make(map[reassembly.FourTuple][]byte)
+
+	// idSeq is a monotonic counter feeding stable per-exchange ids.
+	idSeq := 0
+
 	// current is the running inference state emitted with every snapshot.
 	var current inference.Inference
 
@@ -161,6 +175,9 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					capLog("  req msg: kind=%d method=%s path=%s", m.Kind, m.Method, m.Path)
 					if m.Kind == httpx.KindRequest {
 						requestBuf[key] = m
+						idSeq++
+						reqID[key] = inferenceID(idSeq)
+						delete(respAccum, key) // fresh exchange on this connection
 					}
 				}
 			case capture.DirFromServer:
@@ -175,6 +192,12 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 						capLog("    no buffered request for key %s:%d/%s:%d", key.SrcIP, key.SrcPort, key.DstIP, key.DstPort)
 						continue
 					}
+					// Accumulate the raw response line so the detail inspector can
+					// show the assembled (streamed) response body.
+					acc := append(respAccum[key], m.Body...)
+					acc = append(acc, '\n')
+					respAccum[key] = acc
+
 					inf, ok := p.extractor.FromExchange(req, m)
 					capLog("    FromExchange ok=%v status=%d model=%s hasTokens=%v", ok, inf.Status, inf.Model, inf.Tokens != nil)
 					if !ok {
@@ -186,9 +209,14 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					if inf.Status == inference.PhaseMetadataOnly {
 						continue
 					}
+					// Stable id (shared across in-progress/completed) + assembled
+					// response body override the per-line extractor values.
+					inf.ID = reqID[key]
+					inf.ResponseBody, inf.ResponseBodyTruncated = inference.TruncateBody(respAccum[key])
 					current = inf
 					if inf.Status == inference.PhaseCompleted {
 						p.recent.RecordInferenceCompletion(inf)
+						delete(respAccum, key) // exchange done; release buffer
 					}
 				}
 			}
@@ -207,6 +235,12 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 			Inference: inferenceState,
 		})
 	}
+}
+
+// inferenceID returns a stable, session-unique id for one captured exchange.
+// Session-scoped uniqueness is sufficient — ids are not persisted across runs.
+func inferenceID(seq int) string {
+	return "inf-" + strconv.Itoa(seq)
 }
 
 // canonicalTuple returns a direction-independent key for a TCP connection so

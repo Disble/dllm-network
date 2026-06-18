@@ -3,8 +3,8 @@ import type { InferenceAggregates, InferenceStatusFilter } from './inference-sto
 
 /**
  * deriveEventId returns the stable identity used for selection + dedup (R2).
- * TECH DEBT (Slice A backend): once inference.Inference emits `id`, that wins.
- * Until then we fall back to a composite key from at + endpoint + model.
+ * Prefers the backend-emitted `id`; falls back to a composite key from
+ * at + endpoint + model when it is absent.
  */
 export function deriveEventId(event: InferenceEvent): string {
   if (event.id !== undefined && event.id !== '') {
@@ -17,7 +17,7 @@ export function deriveEventId(event: InferenceEvent): string {
  * isRealEvent rejects the zero-value bootstrap event (empty `at`) so the store
  * never accumulates the EMPTY_DASHBOARD_SNAPSHOT placeholder.
  */
-export function isRealEvent(event: InferenceEvent): boolean {
+function isRealEvent(event: InferenceEvent): boolean {
   return event.at !== '' && event.endpoint !== '';
 }
 
@@ -26,7 +26,7 @@ export function isRealEvent(event: InferenceEvent): boolean {
  * preserving position. Replacement keeps in-progress -> completed transitions
  * stable without duplicating rows or disturbing the user's selection.
  */
-export function upsertEvent(
+function upsertEvent(
   events: readonly InferenceEvent[],
   incoming: InferenceEvent,
 ): readonly InferenceEvent[] {
@@ -66,7 +66,7 @@ export function ingestSnapshotEvents(
 /**
  * matchesQuery performs a case-insensitive substring match on model + endpoint.
  */
-export function matchesQuery(event: InferenceEvent, query: string): boolean {
+function matchesQuery(event: InferenceEvent, query: string): boolean {
   const trimmed = query.trim().toLowerCase();
   if (trimmed === '') {
     return true;
@@ -80,7 +80,7 @@ export function matchesQuery(event: InferenceEvent, query: string): boolean {
 /**
  * matchesStatusFilter returns true when the event passes the phase filter.
  */
-export function matchesStatusFilter(event: InferenceEvent, filter: InferenceStatusFilter): boolean {
+function matchesStatusFilter(event: InferenceEvent, filter: InferenceStatusFilter): boolean {
   return filter === 'all' || event.status === filter;
 }
 
@@ -126,7 +126,7 @@ export function selectEventById(
  * percentile computes the nearest-rank percentile over a numeric sample.
  * Returns null for an empty sample (null != zero invariant).
  */
-export function percentile(values: readonly number[], p: number): number | null {
+function percentile(values: readonly number[], p: number): number | null {
   if (values.length === 0) {
     return null;
   }

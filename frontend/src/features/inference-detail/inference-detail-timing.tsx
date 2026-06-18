@@ -1,5 +1,5 @@
 import { TimingBar } from '../../shared/ui/atoms/timing-bar';
-import { UNAVAILABLE_LABEL } from './inference-detail.constants';
+import { formatTimingMilliseconds } from './inference-detail-timing.helpers';
 import type { InferenceDetailBodyTabProps } from './inference-detail.types';
 
 /**
@@ -13,18 +13,16 @@ export function InferenceDetailTiming({ event }: Readonly<InferenceDetailBodyTab
   const evalMS = tokens != null ? tokens.evalDuration / 1e6 : null;
   const totalMS = tokens != null ? tokens.latencyMS : null;
 
-  const fmt = (value: number | null) => (value === null ? UNAVAILABLE_LABEL : `${Math.round(value)}ms`);
-
   return (
     <div className="inference-detail__timing">
       <TimingBar loadMS={loadMS} evalMS={evalMS} totalMS={totalMS} />
       <dl className="inference-detail__fields">
         <dt>Load</dt>
-        <dd>{fmt(loadMS)}</dd>
+        <dd>{formatTimingMilliseconds(loadMS)}</dd>
         <dt>Eval</dt>
-        <dd>{fmt(evalMS)}</dd>
+        <dd>{formatTimingMilliseconds(evalMS)}</dd>
         <dt>Total</dt>
-        <dd>{fmt(totalMS)}</dd>
+        <dd>{formatTimingMilliseconds(totalMS)}</dd>
       </dl>
     </div>
   );

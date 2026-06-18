@@ -37,7 +37,7 @@ export function InferenceDetailPanel({ event, overview }: Readonly<InferenceDeta
         <StatusCodePill statusCode={event.statusCode ?? null} />
       </header>
 
-      <nav className="inference-detail__tabs" role="tablist" aria-label="Request detail tabs">
+      <div className="inference-detail__tabs" role="tablist" aria-label="Request detail tabs">
         {INFERENCE_DETAIL_TABS.map((tab) => (
           <button
             key={tab.key}
@@ -50,7 +50,7 @@ export function InferenceDetailPanel({ event, overview }: Readonly<InferenceDeta
             {tab.label}
           </button>
         ))}
-      </nav>
+      </div>
 
       <div className="inference-detail__tabpanel" role="tabpanel">
         {activeTab === 'overview' ? <InferenceDetailOverview viewModel={overview} /> : null}

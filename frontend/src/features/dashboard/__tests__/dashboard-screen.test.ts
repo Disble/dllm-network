@@ -12,6 +12,23 @@ afterEach(() => {
 });
 
 describe('DashboardScreen', () => {
+  it('prioritizes the inference network workbench before telemetry context', () => {
+    const controller = createSourceController(EMPTY_DASHBOARD_SNAPSHOT);
+
+    render(createElement(DashboardScreen, { source: controller.source, now: new Date('2026-06-15T00:03:30Z') }));
+
+    const workbench = screen.getByLabelText('Inference network');
+    const telemetryPanel = screen.getByText('Passive-only telemetry').closest('.dashboard-shell');
+    const secondaryWorkspace = screen.getByLabelText('Secondary telemetry');
+
+    expect(telemetryPanel).not.toBeNull();
+    expect(secondaryWorkspace.contains(telemetryPanel)).toBe(true);
+    expect(secondaryWorkspace.contains(screen.getByLabelText('Running models'))).toBe(true);
+    expect(workbench.compareDocumentPosition(telemetryPanel!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   it('renders the passive-safe empty view before the first dashboard snapshot event', () => {
     const controller = createSourceController(EMPTY_DASHBOARD_SNAPSHOT);
 

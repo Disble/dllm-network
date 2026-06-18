@@ -15,6 +15,23 @@ export function formatTimestamp(value: string): string {
 }
 
 /**
+ * formatClockTime renders just the wall-clock HH:MM:SS (UTC) from an RFC3339
+ * timestamp for dense table columns. Returns "—" when empty or unparseable.
+ */
+export function formatClockTime(value: string): string {
+  if (value === '') {
+    return '—';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return date.toISOString().slice(11, 19);
+}
+
+/**
  * formatBytes renders byte counts into small human-readable labels.
  * Handles B, KB, MB, and GB ranges.
  */

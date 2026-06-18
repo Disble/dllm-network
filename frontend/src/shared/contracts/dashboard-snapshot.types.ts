@@ -33,6 +33,18 @@ export interface TokenStats {
 }
 
 /**
+ * HttpHeader is a single ordered HTTP header pair. Order is preserved and
+ * duplicate names are allowed (e.g. multiple Set-Cookie), mirroring how
+ * Chrome DevTools renders headers. Mirrors internal/capture/httpx.Header.
+ */
+export interface HttpHeader {
+  /** Header field name, verbatim as captured. */
+  readonly name: string;
+  /** Header field value, verbatim as captured. */
+  readonly value: string;
+}
+
+/**
  * InferenceEvent is the frontend mirror of internal/telemetry/inference.Inference.
  * JSON field names match the Go json tags exactly.
  */
@@ -56,6 +68,36 @@ export interface InferenceEvent {
    * Callers MUST check for null before reading any field.
    */
   readonly tokens: TokenStats | null;
+
+  // ---------------------------------------------------------------------------
+  // DevTools-Network detail fields (R2/R3). Additive + OPTIONAL for back-compat.
+  // TECH DEBT (Slice A backend): the capture pipeline already parses these at
+  // the wire (internal/capture/httpx) but the extractor discards them. Until
+  // Slice A plumbs them through inference.Inference -> projector -> snapshot,
+  // these arrive `undefined` and the UI MUST render an honest "not captured"
+  // state (null != zero invariant). Do NOT fabricate placeholder values.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Stable identity for master-detail selection (R2). Mirrors json:"id".
+   * TECH DEBT: until backend emits it, the store derives a fallback id from
+   * `${at}::${endpoint}::${model}` — see shared/store/inference-store.helpers.
+   */
+  readonly id?: string;
+  /** HTTP response status code. 0/undefined = unknown. Mirrors json:"statusCode". */
+  readonly statusCode?: number;
+  /** Raw request body text (the prompt + options JSON). Mirrors json:"requestBody". */
+  readonly requestBody?: string;
+  /** True when requestBody was truncated at the capture byte cap (R6). */
+  readonly requestBodyTruncated?: boolean;
+  /** Assembled response body text (NDJSON joined or final payload). Mirrors json:"responseBody". */
+  readonly responseBody?: string;
+  /** True when responseBody was truncated at the capture byte cap (R6). */
+  readonly responseBodyTruncated?: boolean;
+  /** Ordered request headers. Mirrors json:"requestHeaders". */
+  readonly requestHeaders?: readonly HttpHeader[];
+  /** Ordered response headers. Mirrors json:"responseHeaders". */
+  readonly responseHeaders?: readonly HttpHeader[];
 }
 
 /**

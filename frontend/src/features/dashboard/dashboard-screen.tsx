@@ -1,26 +1,29 @@
 import { InferenceDetailContainer } from '../inference-detail/inference-detail-container';
-import { InferenceFeedContainer } from '../inference-feed/inference-feed-container';
+import { InferenceExplorerContainer } from '../inference-explorer/inference-explorer-container';
 import { RunningModelsContainer } from '../running-models/running-models-container';
 import { DashboardPanel } from './dashboard-panel';
 import { useDashboardScreen } from './use-dashboard-screen';
 import type { DashboardScreenProps } from './use-dashboard-screen.types';
 
 /**
- * DashboardScreen composes the full dashboard UI:
- * - Passive telemetry panel (confirmed + inferred state)
- * - Live inference feed (append-only timeline of captured requests)
- * - Per-request inference detail (selected/most-recent inference metrics)
- * - Enriched running-models panel (per-model size, VRAM, context, TTL)
+ * DashboardScreen composes the dashboard around a DevTools-Network workbench:
+ * - Inference workbench: master (virtualized request explorer) + detail
+ *   (tabbed per-request inspector) as the primary, hero surface.
+ * - Dense secondary telemetry context below the request table.
  */
 export function DashboardScreen({ source, now }: Readonly<DashboardScreenProps>) {
   const viewModel = useDashboardScreen({ source, now });
 
   return (
     <main className="dashboard-root">
-      <DashboardPanel viewModel={viewModel} />
-      <InferenceFeedContainer source={source} />
-      <InferenceDetailContainer source={source} />
-      <RunningModelsContainer source={source} />
+      <section className="inference-workbench" aria-label="Inference network">
+        <InferenceExplorerContainer source={source} />
+        <InferenceDetailContainer source={source} />
+      </section>
+      <section className="secondary-telemetry-workspace" aria-label="Secondary telemetry">
+        <DashboardPanel viewModel={viewModel} />
+        <RunningModelsContainer source={source} />
+      </section>
     </main>
   );
 }

@@ -1,10 +1,14 @@
 import { createElement } from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { DashboardPanel } from '../dashboard-panel';
 import { createDashboardViewModel } from '../dashboard-view-model.helpers';
 import type { DashboardSnapshot } from '../../../shared/contracts/dashboard-snapshot.types';
+
+afterEach(() => {
+  cleanup();
+});
 
 describe('DashboardPanel', () => {
   it('renders separate confirmed and inferred sections with passive limits', () => {
@@ -20,6 +24,16 @@ describe('DashboardPanel', () => {
     expect(screen.getByText('Exact streaming chunks are unavailable in passive mode.')).toBeTruthy();
     expect(screen.getByText('high confidence')).toBeTruthy();
     expect(screen.getByText('mistral')).toBeTruthy();
+  });
+
+  it('marks passive telemetry panels for dense secondary workspace placement', () => {
+    const snapshot = createSnapshot();
+    const viewModel = createDashboardViewModel(snapshot, new Date('2026-06-15T00:00:30Z'));
+
+    render(createElement(DashboardPanel, { viewModel }));
+
+    expect(screen.getByText('Passive limits').closest('article')?.className).toContain('metric-card--limits');
+    expect(screen.getByText('Recent confirmed models').closest('article')?.className).toContain('metric-card--history');
   });
 });
 

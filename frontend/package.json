@@ -14,8 +14,10 @@
     "doctor:react": "bunx react-doctor@0.5.1 --verbose --no-telemetry"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.3",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@eslint/js": "^9.29.0",

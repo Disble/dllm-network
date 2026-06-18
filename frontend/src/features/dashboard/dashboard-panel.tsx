@@ -5,7 +5,7 @@ import type { DashboardPanelProps } from './dashboard-view-model.types';
  */
 export function DashboardPanel({ viewModel }: Readonly<DashboardPanelProps>) {
   return (
-    <main className="dashboard-shell">
+    <section className="dashboard-shell" aria-label="Passive telemetry context">
       <header className="dashboard-header">
         <div>
           <p className="eyebrow">Passive-only telemetry</p>
@@ -16,7 +16,7 @@ export function DashboardPanel({ viewModel }: Readonly<DashboardPanelProps>) {
       </header>
 
       <section className="dashboard-grid">
-        <article className="metric-card">
+        <article className="metric-card metric-card--confirmed">
           <p className="section-label">{viewModel.confirmedBadgeLabel}</p>
           <h2>{viewModel.primaryModelValue}</h2>
           <ul className="metric-list">
@@ -28,7 +28,7 @@ export function DashboardPanel({ viewModel }: Readonly<DashboardPanelProps>) {
           </ul>
         </article>
 
-        <article className="metric-card accent-card">
+        <article className="metric-card accent-card metric-card--inferred">
           <p className="section-label">{viewModel.inferredBadgeLabel}</p>
           <h2>{viewModel.inferredSummary}</h2>
           <p className="confidence-text">{viewModel.confidenceLabel}</p>
@@ -39,7 +39,7 @@ export function DashboardPanel({ viewModel }: Readonly<DashboardPanelProps>) {
           </ul>
         </article>
 
-        <article className="metric-card wide-card">
+        <article className="metric-card wide-card metric-card--limits">
           <p className="section-label">Passive limits</p>
           <ul className="metric-list">
             {viewModel.passiveLimitations.map((item) => (
@@ -48,7 +48,7 @@ export function DashboardPanel({ viewModel }: Readonly<DashboardPanelProps>) {
           </ul>
         </article>
 
-        <article className="metric-card wide-card">
+        <article className="metric-card wide-card metric-card--history">
           <p className="section-label">Recent confirmed models</p>
           <ul className="metric-list">
             {viewModel.recentModels.length > 0 ? (
@@ -59,6 +59,6 @@ export function DashboardPanel({ viewModel }: Readonly<DashboardPanelProps>) {
           </ul>
         </article>
       </section>
-    </main>
+    </section>
   );
 }

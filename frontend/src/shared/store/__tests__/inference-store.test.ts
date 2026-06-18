@@ -5,6 +5,7 @@ import type {
   DashboardSnapshot,
   InferenceEvent,
 } from '../../contracts/dashboard-snapshot.types';
+import type { InferenceStatusFilter } from '../inference-store.types';
 import { PHASE_COMPLETED, PHASE_IN_PROGRESS } from '../../contracts/dashboard-snapshot.types';
 import type { DashboardSnapshotSource } from '../../../infrastructure/dashboard-snapshot-source';
 import {
@@ -162,7 +163,22 @@ describe('selectFilteredInferenceView', () => {
     }),
   ];
 
-  it.each([
+  interface FilteredViewTestCase {
+    name: string;
+    query: string;
+    statusFilter: InferenceStatusFilter;
+    expectedIds: string[];
+    expectedAggregates: {
+      count: number;
+      avgPerSec: number | null;
+      p50LatencyMS: number | null;
+      p95LatencyMS: number | null;
+      totalEvalCount: number;
+      lastUpdated: string;
+    };
+  }
+
+  it.each<FilteredViewTestCase>([
     {
       name: 'applies query and status filters before computing aggregates',
       query: 'alpha',

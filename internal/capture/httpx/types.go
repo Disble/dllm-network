@@ -9,6 +9,14 @@
 // unit-testable without elevation using golden byte fixtures.
 package httpx
 
+// Header is one HTTP header field, preserved in wire order with its original
+// name casing. Duplicate names are allowed (e.g. multiple Set-Cookie) — they
+// are emitted as separate entries, mirroring how Chrome DevTools renders them.
+type Header struct {
+	Name  string
+	Value string
+}
+
 // MessageKind distinguishes whether a parsed Message originated from an HTTP
 // request or an HTTP response.
 type MessageKind int
@@ -37,6 +45,11 @@ type Message struct {
 
 	// Response fields — populated when Kind == KindResponse.
 	StatusCode int
+
+	// Headers carries every parsed header field in wire order. For NDJSON
+	// streaming responses, each emitted line Message carries the same response
+	// headers parsed from the status-line block.
+	Headers []Header
 
 	// Body is the raw body bytes. For NDJSON streams this is a single line
 	// (newline NOT included).

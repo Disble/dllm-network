@@ -13,12 +13,12 @@ import (
 type parseState int
 
 const (
-	stateHeaders   parseState = iota // waiting for / accumulating headers
-	stateBody                        // reading a Content-Length body
-	stateChunkSize                   // reading a hex chunk-size line
-	stateChunkData                   // reading chunk payload bytes
-	stateChunkCRLF                   // consuming the CRLF after chunk payload
-	stateChunkTrail                  // consuming the CRLF after the terminal "0" chunk
+	stateHeaders    parseState = iota // waiting for / accumulating headers
+	stateBody                         // reading a Content-Length body
+	stateChunkSize                    // reading a hex chunk-size line
+	stateChunkData                    // reading chunk payload bytes
+	stateChunkCRLF                    // consuming the CRLF after chunk payload
+	stateChunkTrail                   // consuming the CRLF after the terminal "0" chunk
 )
 
 // Parser incrementally parses HTTP/1.1 request and response messages from raw
@@ -63,9 +63,10 @@ type parsedHeaders struct {
 	method        string
 	path          string
 	statusCode    int
-	contentLength int  // -1 means not set
-	chunked       bool // Transfer-Encoding: chunked
-	isNDJSON      bool // Content-Type: application/x-ndjson
+	contentLength int      // -1 means not set
+	chunked       bool     // Transfer-Encoding: chunked
+	isNDJSON      bool     // Content-Type: application/x-ndjson
+	headers       []Header // all parsed header fields, in wire order
 }
 
 // NewParser creates a ready-to-use Parser.
@@ -166,7 +167,7 @@ func (p *Parser) consumeHeaders() ([]Message, bool) {
 		// with no framing, body length is unknown — skip to the next message.
 		p.state = stateHeaders
 		if ph.kind == KindRequest {
-			return []Message{{Kind: ph.kind, Method: ph.method, Path: ph.path}}, true
+			return []Message{{Kind: ph.kind, Method: ph.method, Path: ph.path, Headers: ph.headers}}, true
 		}
 	}
 
@@ -264,6 +265,7 @@ func (p *Parser) consumeBody() ([]Message, bool) {
 		Method:     p.current.method,
 		Path:       p.current.path,
 		StatusCode: p.current.statusCode,
+		Headers:    p.current.headers,
 		Body:       body,
 	}
 	p.state = stateHeaders
@@ -406,6 +408,7 @@ func (p *Parser) emitNDJSONLine(line []byte) Message {
 		Method:     p.current.method,
 		Path:       p.current.path,
 		StatusCode: p.current.statusCode,
+		Headers:    p.current.headers,
 		Body:       append([]byte(nil), line...),
 	}
 
@@ -470,10 +473,13 @@ func parseHeaderBlock(block []byte) parsedHeaders {
 		if idx < 0 {
 			continue
 		}
-		key := strings.TrimSpace(strings.ToLower(line[:idx]))
+		name := strings.TrimSpace(line[:idx])
 		val := strings.TrimSpace(line[idx+1:])
 
-		switch key {
+		// Preserve every header in wire order with its original name casing.
+		ph.headers = append(ph.headers, Header{Name: name, Value: val})
+
+		switch strings.ToLower(name) {
 		case "content-length":
 			n, err := strconv.Atoi(val)
 			if err == nil {

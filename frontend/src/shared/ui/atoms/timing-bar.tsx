@@ -20,7 +20,11 @@ export function TimingBar({ loadMS, evalMS, totalMS }: Readonly<TimingBarProps>)
 
   const pct = (value: number) => `${((value / totalMS) * 100).toFixed(1)}%`;
 
+  // This is a CSS-composed data visualization (stacked proportional segments).
+  // A native <img> needs a src and an <svg> would require restructuring the
+  // styled segments without improving accessibility, so role="img" is kept.
   return (
+    // eslint-disable-next-line react-doctor/prefer-tag-over-role
     <div className="timing-bar" role="img" aria-label={`Total ${Math.round(totalMS)}ms`}>
       <span className="timing-bar__segment timing-bar__segment--load" style={{ width: pct(load) }} title={`load ${Math.round(load)}ms`} />
       <span className="timing-bar__segment timing-bar__segment--eval" style={{ width: pct(evaluate) }} title={`eval ${Math.round(evaluate)}ms`} />

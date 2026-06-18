@@ -14,7 +14,11 @@ export function WaterfallBar({ loadMS, evalMS, totalMS, maxMS }: Readonly<Waterf
     return <span className="waterfall-bar waterfall-bar--unavailable" aria-label="Timing unavailable">{'—'}</span>;
   }
 
+  // This is a CSS-composed data visualization (stacked proportional segments).
+  // A native <img> needs a src and an <svg> would require restructuring the
+  // styled segments without improving accessibility, so role="img" is kept.
   return (
+    // eslint-disable-next-line react-doctor/prefer-tag-over-role
     <div className="waterfall-bar" role="img" aria-label={`Total ${Math.round(totalMS ?? 0)}ms`}>
       <div className="waterfall-bar__track">
         <div className="waterfall-bar__fill" style={{ width: `${geometry.barWidthPct}%` }}>

@@ -15,7 +15,7 @@ afterEach(() => {
 
 describe('AppShell', () => {
   it('renders the brand, the nav rail and the content', () => {
-    render(createElement(AppShell, { children: createElement('p', null, 'DASHBOARD CONTENT') }));
+    render(createElement(AppShell, null, createElement('p', null, 'DASHBOARD CONTENT')));
 
     expect(screen.getByText('Ollama Telemetry')).toBeTruthy();
     expect(screen.getByLabelText('Sections')).toBeTruthy();
@@ -23,7 +23,7 @@ describe('AppShell', () => {
   });
 
   it('window controls do not throw without the Wails runtime', () => {
-    render(createElement(AppShell, { children: createElement('p', null, 'x') }));
+    render(createElement(AppShell, null, createElement('p', null, 'x')));
 
     expect(() => {
       fireEvent.click(screen.getByLabelText('Minimise'));

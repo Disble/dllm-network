@@ -20,6 +20,10 @@ export interface InferenceAggregates {
   readonly p50LatencyMS: number | null;
   /** 95th percentile latency in ms, or null when none completed. */
   readonly p95LatencyMS: number | null;
+  /** Sum of generated token counts across completed events. */
+  readonly totalEvalCount: number;
+  /** Timestamp (RFC3339) of the most recent event, or '' when none. */
+  readonly lastUpdated: string;
 }
 
 /**

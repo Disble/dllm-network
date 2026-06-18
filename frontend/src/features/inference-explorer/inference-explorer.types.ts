@@ -88,3 +88,31 @@ export interface InferenceAggregatesProps {
   /** Derived summary metrics. */
   readonly aggregates: InferenceAggregates;
 }
+
+/**
+ * InferenceKpiItem is one display-ready cell of the top KPI strip.
+ */
+export interface InferenceKpiItem {
+  /** Uppercase metric label (e.g. "AVG TOK/S"). */
+  readonly label: string;
+  /** Formatted metric value (e.g. "45.0 tok/s" or "—"). */
+  readonly value: string;
+  /** Sub-caption beneath the value (e.g. "Average"). */
+  readonly caption: string;
+}
+
+/**
+ * UseInferenceMetricsResult is the view model for the KPI strip hook.
+ */
+export interface UseInferenceMetricsResult {
+  /** Display-ready KPI cells in display order. */
+  readonly items: readonly InferenceKpiItem[];
+}
+
+/**
+ * InferenceKpiStripProps is the boundary for the top KPI strip presentational.
+ */
+export interface InferenceKpiStripProps {
+  /** Display-ready KPI cells. */
+  readonly items: readonly InferenceKpiItem[];
+}

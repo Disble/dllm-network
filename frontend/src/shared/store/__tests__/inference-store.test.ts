@@ -152,6 +152,17 @@ describe('computeAggregates', () => {
     expect(agg.p50LatencyMS).toBe(1000);
     expect(agg.p95LatencyMS).toBe(3000);
   });
+
+  it('sums eval counts and tracks the most recent timestamp', () => {
+    const tokens = (evalCount: number) => ({ promptEvalCount: 0, evalCount, evalDuration: 0, totalDuration: 0, loadDuration: 0, perSec: 1, latencyMS: 1 });
+    const events = [
+      makeEvent({ id: 'a', at: '2026-06-18T03:00:00Z', tokens: tokens(10) }),
+      makeEvent({ id: 'b', at: '2026-06-18T05:00:00Z', tokens: tokens(5) }),
+    ];
+    const agg = computeAggregates(events);
+    expect(agg.totalEvalCount).toBe(15);
+    expect(agg.lastUpdated).toBe('2026-06-18T05:00:00Z');
+  });
 });
 
 describe('connectInferenceStore', () => {

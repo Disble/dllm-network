@@ -149,10 +149,15 @@ export function computeAggregates(events: readonly InferenceEvent[]): InferenceA
     ? null
     : completed.reduce((sum, event) => sum + event.tokens!.perSec, 0) / completed.length;
 
+  const totalEvalCount = completed.reduce((sum, event) => sum + event.tokens!.evalCount, 0);
+  const lastUpdated = events.reduce((latest, event) => (event.at > latest ? event.at : latest), '');
+
   return {
     count: events.length,
     avgPerSec,
     p50LatencyMS: percentile(latencies, 50),
     p95LatencyMS: percentile(latencies, 95),
+    totalEvalCount,
+    lastUpdated,
   };
 }

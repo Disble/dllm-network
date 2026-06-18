@@ -1,5 +1,6 @@
 import { InferenceDetailContainer } from '../inference-detail/inference-detail-container';
 import { InferenceExplorerContainer } from '../inference-explorer/inference-explorer-container';
+import { InferenceKpiContainer } from '../inference-explorer/inference-kpi-container';
 import { RunningModelsContainer } from '../running-models/running-models-container';
 import { DashboardPanel } from './dashboard-panel';
 import { useDashboardScreen } from './use-dashboard-screen';
@@ -16,6 +17,7 @@ export function DashboardScreen({ source, now }: Readonly<DashboardScreenProps>)
 
   return (
     <main className="dashboard-root">
+      <InferenceKpiContainer source={source} />
       <section className="inference-workbench" aria-label="Inference network">
         <InferenceExplorerContainer source={source} />
         <InferenceDetailContainer source={source} />

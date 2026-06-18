@@ -23,10 +23,13 @@ func main() {
 		Height:            800,
 		StartHidden:       true,
 		HideWindowOnClose: true,
+		// Frameless: the custom in-app title bar (TitleBar component) renders the
+		// brand + window controls, matching the dashboard reference design.
+		Frameless: true,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour: &options.RGBA{R: 15, G: 23, B: 42, A: 1},
+		BackgroundColour: &options.RGBA{R: 8, G: 9, B: 11, A: 1},
 		OnStartup:        app.Startup,
 		Bind: []any{
 			app,

@@ -123,38 +123,13 @@ describe('buildRunningModelCardViewModel', () => {
 // ---------------------------------------------------------------------------
 
 describe('RunningModelCard', () => {
-  it('renders all enriched model fields', () => {
-    const model = makeRunningModel();
-    const vm = buildRunningModelCardViewModel(model);
+  it('renders the model name as a compact row', () => {
+    const vm = buildRunningModelCardViewModel(makeRunningModel());
 
     render(createElement(RunningModelCard, { viewModel: vm }));
 
     expect(screen.getByText('llama3:8b')).toBeTruthy();
-    expect(screen.getByText('8B')).toBeTruthy();
-    expect(screen.getByText('Q4_0')).toBeTruthy();
-    expect(screen.getByText(/8192/)).toBeTruthy();
-    // size and sizeVram should appear in human-readable form
-    expect(screen.queryAllByText(/GB|MB|KB|B/).length).toBeGreaterThan(0);
-  });
-
-  it('renders "—" for absent parameterSize and quantizationLevel', () => {
-    const model = makeRunningModel({ parameterSize: '', quantizationLevel: '' });
-    const vm = buildRunningModelCardViewModel(model);
-
-    render(createElement(RunningModelCard, { viewModel: vm }));
-
-    // At least 2 dashes for the two absent fields
-    const dashes = screen.getAllByText('—');
-    expect(dashes.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('renders "—" for absent expiresAt', () => {
-    const model = makeRunningModel({ expiresAt: '' });
-    const vm = buildRunningModelCardViewModel(model);
-
-    render(createElement(RunningModelCard, { viewModel: vm }));
-
-    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.getByLabelText('Running model: llama3:8b')).toBeTruthy();
   });
 });
 

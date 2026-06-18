@@ -1,64 +1,62 @@
 import type { DashboardPanelProps } from './dashboard-view-model.types';
 
 /**
- * DashboardPanel renders the passive telemetry dashboard from a precomputed view model.
+ * DashboardPanel renders the compact passive-telemetry summary: a freshness
+ * header plus three at-a-glance tiles (collection mode, snapshot time, health).
+ * Verbose confirmed/inferred detail and passive-limit warnings were removed.
  */
-export function DashboardPanel({ viewModel }: Readonly<DashboardPanelProps>) {
+export function DashboardPanel({ viewModel: vm }: Readonly<DashboardPanelProps>) {
   return (
-    <section className="dashboard-shell" aria-label="Passive telemetry context">
-      <header className="dashboard-header">
-        <div>
+    <section className="telemetry-panel" aria-label="Passive telemetry context">
+      <header className="telemetry-panel__header">
+        <div className="telemetry-panel__heading">
           <p className="eyebrow">Passive-only telemetry</p>
-          <h1>Ollama Telemetry</h1>
-          <p className="body-copy">Published {viewModel.publishedAtLabel}</p>
+          <h2 className="telemetry-panel__title">Ollama Telemetry</h2>
+          <p className="telemetry-panel__published">Published {vm.publishedAtLabel}</p>
         </div>
-        <p className="status-pill">{viewModel.stalenessLabel}</p>
+        <span className={`telemetry-panel__freshness${vm.isFresh ? ' telemetry-panel__freshness--fresh' : ''}`}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.36 2.64L21 8" />
+            <path d="M21 3v5h-5" />
+          </svg>
+          {vm.stalenessLabel}
+        </span>
       </header>
 
-      <section className="dashboard-grid">
-        <article className="metric-card metric-card--confirmed">
-          <p className="section-label">{viewModel.confirmedBadgeLabel}</p>
-          <h2>{viewModel.primaryModelValue}</h2>
-          <ul className="metric-list">
-            <li>Ollama version: {viewModel.ollamaVersionValue}</li>
-            <li>Process: {viewModel.processValue}</li>
-            <li>Connections: {viewModel.connectionsValue}</li>
-            <li>Host: {viewModel.hostValue}</li>
-            <li>Observed: {viewModel.observedAtLabel}</li>
-          </ul>
-        </article>
+      <dl className="telemetry-tiles">
+        <div className="telemetry-tile">
+          <svg className="telemetry-tile__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <ellipse cx="12" cy="5" rx="9" ry="3" />
+            <path d="M3 5v14a9 3 0 0 0 18 0V5" />
+            <path d="M3 12a9 3 0 0 0 18 0" />
+          </svg>
+          <div className="telemetry-tile__body">
+            <dt>Collection mode</dt>
+            <dd>{vm.collectionModeLabel}</dd>
+          </div>
+        </div>
 
-        <article className="metric-card accent-card metric-card--inferred">
-          <p className="section-label">{viewModel.inferredBadgeLabel}</p>
-          <h2>{viewModel.inferredSummary}</h2>
-          <p className="confidence-text">{viewModel.confidenceLabel}</p>
-          <ul className="metric-list">
-            {viewModel.evidence.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </article>
+        <div className="telemetry-tile">
+          <svg className="telemetry-tile__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          <div className="telemetry-tile__body">
+            <dt>Snapshot time</dt>
+            <dd>{vm.snapshotTimeLabel}</dd>
+          </div>
+        </div>
 
-        <article className="metric-card wide-card metric-card--limits">
-          <p className="section-label">Passive limits</p>
-          <ul className="metric-list">
-            {viewModel.passiveLimitations.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </article>
-
-        <article className="metric-card wide-card metric-card--history">
-          <p className="section-label">Recent confirmed models</p>
-          <ul className="metric-list">
-            {viewModel.recentModels.length > 0 ? (
-              viewModel.recentModels.map((item) => <li key={item}>{item}</li>)
-            ) : (
-              <li>No confirmed model history yet.</li>
-            )}
-          </ul>
-        </article>
-      </section>
+        <div className="telemetry-tile">
+          <svg className="telemetry-tile__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+          </svg>
+          <div className="telemetry-tile__body">
+            <dt>Status</dt>
+            <dd>{vm.healthLabel}</dd>
+          </div>
+        </div>
+      </dl>
     </section>
   );
 }

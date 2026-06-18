@@ -18,7 +18,7 @@ describe('DashboardScreen', () => {
     render(createElement(DashboardScreen, { source: controller.source, now: new Date('2026-06-15T00:03:30Z') }));
 
     const workbench = screen.getByLabelText('Inference network');
-    const telemetryPanel = screen.getByText('Passive-only telemetry').closest('.dashboard-shell');
+    const telemetryPanel = screen.getByText('Passive-only telemetry').closest('.telemetry-panel');
     const secondaryWorkspace = screen.getByLabelText('Secondary telemetry');
 
     expect(telemetryPanel).not.toBeNull();
@@ -36,12 +36,14 @@ describe('DashboardScreen', () => {
 
     render(createElement(DashboardScreen, { source: controller.source, now: new Date('2026-06-15T00:03:30Z') }));
 
-    expect(screen.getByText('No confirmed running model')).toBeTruthy();
     expect(screen.getByText('Stale passive snapshot')).toBeTruthy();
-    expect(screen.getByText('No confirmed model history yet.')).toBeTruthy();
+    expect(screen.getByText('Collection mode')).toBeTruthy();
+    expect(screen.getByText('Passive-only')).toBeTruthy();
     expect(screen.getByText(hasExactText('Published Unavailable'))).toBeTruthy();
-    expect(screen.getByText(hasExactText('Ollama version: Unavailable'))).toBeTruthy();
-    expect(screen.getByText(hasExactText('Observed: Unavailable'))).toBeTruthy();
+    // The verbose confirmed/inferred/passive-limit clutter is gone from the panel.
+    expect(screen.queryByText('Passive limits')).toBeNull();
+    expect(screen.queryByText('Confirmed telemetry')).toBeNull();
+    expect(screen.queryByText('Recent confirmed models')).toBeNull();
   });
 
   it('re-renders when a dashboard:snapshot event delivers a live passive snapshot', () => {
@@ -49,17 +51,15 @@ describe('DashboardScreen', () => {
 
     render(createElement(DashboardScreen, { source: controller.source, now: new Date('2026-06-15T00:00:30Z') }));
 
-    expect(screen.getByText('No confirmed running model')).toBeTruthy();
+    expect(screen.getByText('Stale passive snapshot')).toBeTruthy();
 
     act(() => {
       controller.emit(createSnapshot('mistral', 'inferred-model-changed'));
     });
 
-    expect(screen.getByText('mistral')).toBeTruthy();
     expect(screen.getByText('Fresh passive snapshot')).toBeTruthy();
-    expect(screen.getByText('inferred-model-changed • mistral')).toBeTruthy();
-    expect(screen.getByText('confirmed running model: mistral')).toBeTruthy();
-    expect(screen.queryByText('No confirmed running model')).toBeNull();
+    expect(screen.getByText('Healthy')).toBeTruthy();
+    expect(screen.queryByText('Stale passive snapshot')).toBeNull();
   });
 });
 

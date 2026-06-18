@@ -32,6 +32,25 @@ export function formatClockTime(value: string): string {
 }
 
 /**
+ * formatClockDateTime renders an RFC3339 timestamp as "YYYY-MM-DD HH:MM:SSZ"
+ * (UTC, no milliseconds) for compact telemetry tiles. Returns "—" when empty
+ * or unparseable.
+ */
+export function formatClockDateTime(value: string): string {
+  if (value === '') {
+    return '—';
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  const iso = date.toISOString();
+  return `${iso.slice(0, 10)} ${iso.slice(11, 19)}Z`;
+}
+
+/**
  * formatBytes renders byte counts into small human-readable labels.
  * Handles B, KB, MB, and GB ranges.
  */

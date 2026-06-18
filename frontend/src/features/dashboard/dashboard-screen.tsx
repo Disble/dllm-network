@@ -26,6 +26,11 @@ export function DashboardScreen({ source, now }: Readonly<DashboardScreenProps>)
         <DashboardPanel viewModel={viewModel} />
         <RunningModelsContainer source={source} />
       </section>
+      <footer className="dashboard-footer">
+        <span>All times shown in UTC</span>
+        <span className="dashboard-footer__dot" aria-hidden="true">•</span>
+        <span>Auto-refresh off</span>
+      </footer>
     </main>
   );
 }

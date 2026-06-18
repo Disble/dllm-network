@@ -145,6 +145,11 @@ func TestPhase1FrontendArchitectureConfig(t *testing.T) {
 			expects: []string{"appDeliverySyntaxRules", "featureHookAnatomySyntaxRules", "readonlyUiPropsBoundarySyntaxRules", "src/shared"},
 			rejects: []string{"@react-navigation/native", "expo-sqlite"},
 		},
+		{
+			name:    "vite emits embeddable wails assets",
+			path:    "frontend/vite.config.ts",
+			expects: []string{"base: './'", "emptyOutDir: false"},
+		},
 	}
 
 	for _, tt := range testCases {

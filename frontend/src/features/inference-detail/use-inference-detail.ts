@@ -1,21 +1,26 @@
-import { dashboardSnapshotSource } from '../../infrastructure/dashboard-snapshot-source';
+import { useEffect } from 'react';
+
 import type { DashboardSnapshotSource } from '../../infrastructure/dashboard-snapshot-source';
-import { EMPTY_DASHBOARD_SNAPSHOT } from '../../shared/contracts/dashboard-snapshot.constants';
-import { useDashboardSnapshot } from '../dashboard/use-dashboard-snapshot';
+import { connectInferenceStore, useInferenceStore } from '../../shared/store/inference-store';
+import { selectEventById } from '../../shared/store/inference-store.helpers';
 import { buildInferenceDetailViewModel } from './inference-detail-view-model.helpers';
-import type { InferenceDetailViewModel } from './inference-detail.types';
+import type { UseInferenceDetailResult } from './inference-detail.types';
 
 /**
- * useInferenceDetail subscribes to the snapshot source and returns the precomputed
- * view model for the most recent (current) inference event.
+ * useInferenceDetail returns the SELECTED inference event (master-detail, R2)
+ * and its precomputed Overview view model. It reads selection from the shared
+ * Zustand store rather than hardwiring the most-recent event.
  */
-export function useInferenceDetail(source?: DashboardSnapshotSource): InferenceDetailViewModel {
-  const resolvedSource = source ?? dashboardSnapshotSource;
+export function useInferenceDetail(source?: DashboardSnapshotSource): UseInferenceDetailResult {
+  useEffect(() => {
+    connectInferenceStore(source);
+  }, [source]);
 
-  const snapshot = useDashboardSnapshot({
-    source: resolvedSource,
-    initialSnapshot: EMPTY_DASHBOARD_SNAPSHOT,
-  });
+  const events = useInferenceStore((state) => state.events);
+  const selectedId = useInferenceStore((state) => state.selectedId);
 
-  return buildInferenceDetailViewModel(snapshot.inference.current);
+  const event = selectEventById(events, selectedId);
+  const overview = event === null ? null : buildInferenceDetailViewModel(event);
+
+  return { event, overview };
 }

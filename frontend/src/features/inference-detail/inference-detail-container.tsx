@@ -3,12 +3,12 @@ import { useInferenceDetail } from './use-inference-detail';
 import type { InferenceDetailContainerProps } from './inference-detail.types';
 
 /**
- * InferenceDetailContainer is a container component that subscribes to the snapshot source
- * and renders the per-request inference detail via InferenceDetailPanel.
- * Follows the container/presentational split: this component manages data; the panel renders it.
+ * InferenceDetailContainer is the detail side of the DevTools-Network layout:
+ * it reads the selected event from the shared store and renders the tabbed
+ * detail panel. Follows the container/presentational split.
  */
 export function InferenceDetailContainer({ source }: Readonly<InferenceDetailContainerProps>) {
-  const viewModel = useInferenceDetail(source);
+  const { event, overview } = useInferenceDetail(source);
 
-  return <InferenceDetailPanel viewModel={viewModel} />;
+  return <InferenceDetailPanel event={event} overview={overview} />;
 }

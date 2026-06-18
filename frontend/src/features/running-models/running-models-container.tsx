@@ -13,6 +13,10 @@ export function RunningModelsContainer({ source }: Readonly<RunningModelsContain
   if (models.length === 0) {
     return (
       <section className="running-models" aria-label="Running models">
+        <header className="running-models__header">
+          <p className="section-label">Loaded models</p>
+          <p className="running-models__count">0 active</p>
+        </header>
         <p className="running-models__empty">No running models at this time.</p>
       </section>
     );
@@ -20,9 +24,15 @@ export function RunningModelsContainer({ source }: Readonly<RunningModelsContain
 
   return (
     <section className="running-models" aria-label="Running models">
-      {models.map((vm) => (
-        <RunningModelCard key={vm.name} viewModel={vm} />
-      ))}
+      <header className="running-models__header">
+        <p className="section-label">Loaded models</p>
+        <p className="running-models__count">{models.length} active</p>
+      </header>
+      <div className="running-models__grid">
+        {models.map((vm) => (
+          <RunningModelCard key={vm.name} viewModel={vm} />
+        ))}
+      </div>
     </section>
   );
 }

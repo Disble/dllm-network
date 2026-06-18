@@ -169,6 +169,7 @@ describe('RunningModelsContainer', () => {
 
     render(createElement(RunningModelsContainer, { source: controller.source }));
 
+    expect(screen.getByText('2 active')).toBeTruthy();
     expect(screen.getByText('llama3:8b')).toBeTruthy();
     expect(screen.getByText('mistral:7b')).toBeTruthy();
   });
@@ -178,6 +179,8 @@ describe('RunningModelsContainer', () => {
 
     render(createElement(RunningModelsContainer, { source: controller.source }));
 
+    expect(screen.getByText('Loaded models')).toBeTruthy();
+    expect(screen.getByText('0 active')).toBeTruthy();
     expect(screen.getByText(/no running models/i)).toBeTruthy();
   });
 

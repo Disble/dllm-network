@@ -136,11 +136,11 @@ body {
 .dashboard-root {
   min-height: 100vh;
   box-sizing: border-box;
-  padding: 32px;
+  padding: clamp(12px, 2vw, 32px);
   background: radial-gradient(circle at top, #1e293b 0%, #020617 65%);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: clamp(12px, 1.5vw, 24px);
 }
 
 .dashboard-root .dashboard-shell {
@@ -150,11 +150,11 @@ body {
 }
 
 /* Constrain every top-level block to the same centred column. */
-.dashboard-root > .inference-feed,
-.dashboard-root > .inference-detail,
-.dashboard-root > .running-models {
+.dashboard-root > .dashboard-shell,
+.dashboard-root > .inference-workbench,
+.dashboard-root > .secondary-telemetry-workspace {
   width: 100%;
-  max-width: 1200px;
+  max-width: min(1920px, calc(100vw - clamp(24px, 4vw, 64px)));
   margin: 0 auto;
   box-sizing: border-box;
 }
@@ -289,8 +289,35 @@ body {
 /* ---- Running models grid ---- */
 .running-models {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  min-height: 100%;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+}
+
+.running-models__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.running-models__count {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.running-models__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 12px;
 }
 
 .running-model-card__name {
@@ -301,6 +328,13 @@ body {
 
 .running-models__empty {
   margin: 0;
+  display: grid;
+  place-items: center;
+  min-height: clamp(220px, 30vh, 360px);
+  padding: 32px 12px;
+  border: 1px dashed rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  box-sizing: border-box;
   color: #94a3b8;
 }
 
@@ -325,7 +359,410 @@ body {
 }
 
 .token-rate-badge--unavailable,
-.latency-pill--unavailable {
+.latency-pill--unavailable,
+.status-code-pill--unavailable {
   background: rgba(148, 163, 184, 0.12);
   color: #94a3b8;
+}
+
+/* =====================================================================
+   DevTools-Network workbench — master (explorer) + detail (tabs)
+   ===================================================================== */
+
+/* Compact the secondary telemetry grid so the request workbench remains first. */
+.secondary-telemetry-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.secondary-telemetry-workspace > * {
+  min-width: 0;
+}
+
+.dashboard-root .dashboard-shell {
+  min-width: 0;
+  height: 100%;
+  padding: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.22);
+}
+
+.dashboard-root .dashboard-header {
+  max-width: none;
+  margin: 0 0 12px;
+  align-items: center;
+}
+
+.dashboard-root .dashboard-header h1 {
+  margin: 0;
+  font-size: clamp(1.2rem, 2vw, 1.8rem);
+}
+
+.dashboard-root .dashboard-header .eyebrow {
+  margin-bottom: 4px;
+}
+
+.dashboard-root .dashboard-grid {
+  grid-template-columns: minmax(240px, 1fr) minmax(240px, 1fr) minmax(260px, 0.85fr);
+  grid-auto-flow: dense;
+  gap: 12px;
+  max-width: none;
+  margin: 0;
+}
+
+.dashboard-root .metric-card {
+  padding: 16px;
+  border-radius: 14px;
+  min-width: 0;
+  box-shadow: none;
+  background: rgba(2, 6, 23, 0.38);
+}
+
+.dashboard-root .metric-card h2 {
+  font-size: 1.1rem;
+  margin: 4px 0 10px;
+}
+
+.dashboard-root .metric-card--confirmed,
+.dashboard-root .metric-card--inferred {
+  min-height: 100%;
+}
+
+.dashboard-root .metric-card--limits {
+  grid-column: span 1;
+  grid-row: span 2;
+}
+
+.dashboard-root .metric-card--history {
+  grid-column: span 2;
+}
+
+.dashboard-root .metric-list {
+  padding-left: 16px;
+  font-size: 0.86rem;
+}
+
+.dashboard-root .metric-list li + li {
+  margin-top: 6px;
+}
+
+/* Master-detail: explorer on the left, detail inspector on the right. */
+.inference-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(340px, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.inference-explorer {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.88);
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.3);
+}
+
+.inference-explorer__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+/* ---- Aggregates header ---- */
+.inference-aggregates {
+  display: flex;
+  gap: 20px;
+  margin: 0;
+}
+.inference-aggregates__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.inference-aggregates__item dt {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+.inference-aggregates__item dd {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #f1f5f9;
+}
+
+/* ---- Filter bar ---- */
+.inference-filter-bar {
+  display: flex;
+  gap: 8px;
+}
+.inference-filter-bar__search,
+.inference-filter-bar__status {
+  padding: 8px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.6);
+  color: #e2e8f0;
+  font-size: 0.85rem;
+}
+.inference-filter-bar__search {
+  min-width: 220px;
+}
+.inference-filter-bar__search:focus,
+.inference-filter-bar__status:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.6);
+}
+
+/* ---- Virtualized table ---- */
+.inference-table {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.inference-table__head,
+.inference-table__row {
+  display: grid;
+  grid-template-columns: 1.4fr 1.7fr 0.7fr 1fr 0.7fr 1fr 1fr 0.9fr;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+}
+.inference-table__head {
+  height: 38px;
+  background: rgba(2, 6, 23, 0.6);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #7dd3fc;
+}
+.inference-table__scroll {
+  position: relative;
+  height: 60vh;
+  overflow-y: auto;
+}
+.inference-table__viewport {
+  position: relative;
+  width: 100%;
+}
+.inference-table__row {
+  border: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.inference-table__row:hover {
+  background: rgba(56, 189, 248, 0.07);
+}
+.inference-table__row--selected {
+  background: rgba(56, 189, 248, 0.16);
+  box-shadow: inset 3px 0 0 #38bdf8;
+}
+.inference-table__cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.inference-table__cell--model {
+  font-weight: 600;
+  color: #f1f5f9;
+}
+.inference-table__cell--endpoint {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+.inference-table__cell--status,
+.inference-table__cell--method {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #cbd5e1;
+}
+.inference-table__cell--time {
+  font-variant-numeric: tabular-nums;
+  color: #94a3b8;
+  font-size: 0.78rem;
+}
+.inference-table__empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: #94a3b8;
+}
+
+/* ---- Status code pill ---- */
+.status-code-pill {
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+}
+.status-code-pill--ok {
+  background: rgba(34, 197, 94, 0.16);
+  color: #86efac;
+}
+.status-code-pill--redirect {
+  background: rgba(250, 204, 21, 0.16);
+  color: #fde68a;
+}
+.status-code-pill--error {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fca5a5;
+}
+
+/* ---- Detail: tabbed inspector ---- */
+.inference-detail {
+  position: sticky;
+  top: 24px;
+}
+.inference-detail__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.inference-detail__empty {
+  margin: 0;
+  padding: 48px 8px;
+  text-align: center;
+  color: #94a3b8;
+}
+.inference-detail__tabs {
+  display: flex;
+  gap: 4px;
+  margin: 16px 0 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+.inference-detail__tab {
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.inference-detail__tab:hover {
+  color: #e2e8f0;
+}
+.inference-detail__tab--active {
+  color: #f1f5f9;
+  border-bottom-color: #38bdf8;
+}
+.inference-detail__tabpanel {
+  min-height: 120px;
+}
+.inference-detail__not-captured {
+  margin: 0;
+  padding: 24px 8px;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+.inference-detail__code {
+  margin: 0;
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.7);
+  color: #cbd5e1;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow: auto;
+}
+.inference-detail__truncated {
+  margin: 8px 0 0;
+  color: #fde68a;
+  font-size: 0.76rem;
+}
+.inference-detail__header-group + .inference-detail__header-group {
+  margin-top: 16px;
+}
+.inference-detail__header-row {
+  display: contents;
+}
+
+/* ---- Timing bar ---- */
+.timing-bar {
+  display: flex;
+  width: 100%;
+  height: 14px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: rgba(148, 163, 184, 0.12);
+  margin-bottom: 16px;
+}
+.timing-bar--unavailable {
+  display: inline-block;
+  width: auto;
+  height: auto;
+  background: none;
+  color: #94a3b8;
+}
+.timing-bar__segment {
+  height: 100%;
+}
+.timing-bar__segment--load {
+  background: #a78bfa;
+}
+.timing-bar__segment--eval {
+  background: #34d399;
+}
+.timing-bar__segment--other {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+@media (max-width: 980px) {
+  .inference-workbench {
+    grid-template-columns: 1fr;
+  }
+  .secondary-telemetry-workspace {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-root .dashboard-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .dashboard-root .metric-card--limits,
+  .dashboard-root .metric-card--history {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+  .inference-detail {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .dashboard-root .dashboard-header,
+  .running-models__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .dashboard-root .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-root .metric-card--history {
+    grid-column: auto;
+  }
+  .running-models__grid {
+    grid-template-columns: 1fr;
+  }
 }

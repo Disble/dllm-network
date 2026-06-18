@@ -98,6 +98,18 @@ export function selectFilteredEvents(
 }
 
 /**
+ * selectCaptureUnavailable reports whether live capture is unavailable: no events
+ * have been accumulated and the snapshot is still in passive-only mode (the
+ * WinDivert source is not active/elevated). Mirrors the legacy feed banner gate.
+ */
+export function selectCaptureUnavailable(
+  events: readonly InferenceEvent[],
+  captureMode: string,
+): boolean {
+  return events.length === 0 && captureMode === 'passive-only';
+}
+
+/**
  * selectEventById returns the event matching id, or null when absent.
  */
 export function selectEventById(

@@ -11,8 +11,18 @@ import type { InferenceExplorerContainerProps } from './inference-explorer.types
  * selection that the detail panel reads back.
  */
 export function InferenceExplorerContainer({ source }: Readonly<InferenceExplorerContainerProps>) {
-  const { rows, selectedId, query, statusFilter, aggregates, onQueryChange, onStatusFilterChange, onSelect } =
-    useInferenceExplorer(source);
+  const {
+    rows,
+    selectedId,
+    query,
+    statusFilter,
+    aggregates,
+    captureUnavailable,
+    captureNote,
+    onQueryChange,
+    onStatusFilterChange,
+    onSelect,
+  } = useInferenceExplorer(source);
 
   return (
     <section className="inference-explorer" aria-label="Inference explorer">
@@ -25,6 +35,11 @@ export function InferenceExplorerContainer({ source }: Readonly<InferenceExplore
           onStatusFilterChange={onStatusFilterChange}
         />
       </header>
+      {captureUnavailable ? (
+        <output className="inference-explorer__banner">
+          Live inference capture is unavailable. {captureNote}
+        </output>
+      ) : null}
       <InferenceTable rows={rows} selectedId={selectedId} onSelect={onSelect} />
     </section>
   );

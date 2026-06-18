@@ -11,6 +11,7 @@ import {
   computeAggregates,
   deriveEventId,
   ingestSnapshotEvents,
+  selectCaptureUnavailable,
   selectEventById,
   selectFilteredEvents,
 } from '../inference-store.helpers';
@@ -172,6 +173,27 @@ describe('connectInferenceStore', () => {
 
     emit(snapshotWith([makeEvent({ id: 'one' })]));
     expect(useInferenceStore.getState().events).toHaveLength(1);
+  });
+});
+
+describe('selectCaptureUnavailable', () => {
+  const event = [makeEvent({ id: 'a' })];
+
+  it('is true only when there are no events and mode is passive-only', () => {
+    expect(selectCaptureUnavailable([], 'passive-only')).toBe(true);
+    expect(selectCaptureUnavailable([], 'capture-active')).toBe(false);
+    expect(selectCaptureUnavailable(event, 'passive-only')).toBe(false);
+  });
+});
+
+describe('ingest captures passive state', () => {
+  it('stores capture mode and passive notes from the snapshot', () => {
+    const { source } = makeFakeSource(snapshotWith([]));
+    connectInferenceStore(source);
+
+    const state = useInferenceStore.getState();
+    expect(state.captureMode).toBe('passive-only');
+    expect(state.passiveNotes.length).toBeGreaterThan(0);
   });
 });
 

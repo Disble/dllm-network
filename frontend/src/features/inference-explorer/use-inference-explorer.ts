@@ -2,7 +2,12 @@ import { useEffect, useMemo } from 'react';
 
 import type { DashboardSnapshotSource } from '../../infrastructure/dashboard-snapshot-source';
 import { connectInferenceStore, useInferenceStore } from '../../shared/store/inference-store';
-import { computeAggregates, selectFilteredEvents } from '../../shared/store/inference-store.helpers';
+import {
+  computeAggregates,
+  selectCaptureUnavailable,
+  selectFilteredEvents,
+} from '../../shared/store/inference-store.helpers';
+import { DEFAULT_CAPTURE_NOTE } from './inference-explorer.constants';
 import type { UseInferenceExplorerResult } from './inference-explorer.types';
 
 /**
@@ -18,12 +23,16 @@ export function useInferenceExplorer(source?: DashboardSnapshotSource): UseInfer
   const onQueryChange = useInferenceStore((state) => state.setQuery);
   const onStatusFilterChange = useInferenceStore((state) => state.setStatusFilter);
   const onSelect = useInferenceStore((state) => state.select);
+  const captureMode = useInferenceStore((state) => state.captureMode);
+  const passiveNotes = useInferenceStore((state) => state.passiveNotes);
 
   const rows = useMemo(
     () => selectFilteredEvents(events, query, statusFilter),
     [events, query, statusFilter],
   );
   const aggregates = useMemo(() => computeAggregates(rows), [rows]);
+  const captureUnavailable = selectCaptureUnavailable(events, captureMode);
+  const captureNote = passiveNotes[passiveNotes.length - 1] ?? DEFAULT_CAPTURE_NOTE;
 
   // Single bridge for the session — intentionally not torn down on unmount so a
   // remount (or a second consumer) never disconnects a still-mounted view.
@@ -38,6 +47,8 @@ export function useInferenceExplorer(source?: DashboardSnapshotSource): UseInfer
     query,
     statusFilter,
     aggregates,
+    captureUnavailable,
+    captureNote,
     onQueryChange,
     onStatusFilterChange,
     onSelect,

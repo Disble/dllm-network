@@ -36,6 +36,10 @@ export interface InferenceStoreState {
   readonly query: string;
   /** Lifecycle-phase filter (R4). */
   readonly statusFilter: InferenceStatusFilter;
+  /** Latest passive-limit mode from the snapshot ('passive-only' | 'capture-active'). */
+  readonly captureMode: string;
+  /** Latest passive-limit notes from the snapshot (used for the capture-unavailable banner). */
+  readonly passiveNotes: readonly string[];
   /** Merge a snapshot's inference events into the accumulated list (upsert by id). */
   // eslint-disable-next-line no-unused-vars -- function-type param documents the action contract.
   readonly ingest: (snapshot: DashboardSnapshot) => void;

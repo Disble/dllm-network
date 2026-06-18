@@ -160,7 +160,6 @@ body {
 }
 
 /* Shared card surface. */
-.inference-feed,
 .inference-detail,
 .running-model-card {
   padding: 24px;
@@ -216,74 +215,6 @@ body {
   color: #bae6fd;
   font-size: 0.78rem;
   text-transform: capitalize;
-}
-
-/* ---- Inference feed ---- */
-.inference-feed__banner {
-  display: block;
-  margin: 0 0 16px;
-  padding: 12px 16px;
-  border: 1px solid rgba(250, 204, 21, 0.35);
-  border-radius: 12px;
-  background: rgba(250, 204, 21, 0.1);
-  color: #fde68a;
-  font-size: 0.9rem;
-}
-
-.inference-feed__banner p {
-  margin: 0;
-}
-
-.inference-feed__rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.inference-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 16px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 14px;
-  background: rgba(2, 6, 23, 0.45);
-}
-
-.inference-row__meta {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  min-width: 0;
-}
-
-.inference-row__model {
-  font-weight: 600;
-  color: #f1f5f9;
-}
-
-.inference-row__endpoint {
-  color: #94a3b8;
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-  font-size: 0.85rem;
-}
-
-.inference-row__status {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #7dd3fc;
-}
-
-.inference-row__metrics {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
 }
 
 /* ---- Running models grid ---- */
@@ -474,6 +405,18 @@ body {
   gap: 16px;
   flex-wrap: wrap;
   margin-bottom: 16px;
+}
+
+/* ---- Capture-unavailable banner ---- */
+.inference-explorer__banner {
+  display: block;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  border-radius: 12px;
+  background: rgba(250, 204, 21, 0.1);
+  color: #fde68a;
+  font-size: 0.9rem;
 }
 
 /* ---- Aggregates header ---- */

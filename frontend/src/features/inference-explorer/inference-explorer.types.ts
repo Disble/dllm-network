@@ -27,6 +27,10 @@ export interface UseInferenceExplorerResult {
   readonly statusFilter: InferenceStatusFilter;
   /** Summary metrics over the filtered set. */
   readonly aggregates: InferenceAggregates;
+  /** True when live capture is unavailable (no events + passive-only mode). */
+  readonly captureUnavailable: boolean;
+  /** Hint shown alongside the capture-unavailable banner. */
+  readonly captureNote: string;
   // eslint-disable-next-line no-unused-vars -- function-type param documents the handler contract.
   readonly onQueryChange: (query: string) => void;
   // eslint-disable-next-line no-unused-vars -- function-type param documents the handler contract.

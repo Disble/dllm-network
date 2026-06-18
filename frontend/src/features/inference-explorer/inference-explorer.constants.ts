@@ -14,6 +14,12 @@ export const INFERENCE_ROW_HEIGHT = 56;
 export const INFERENCE_TABLE_OVERSCAN = 8;
 
 /**
+ * DEFAULT_CAPTURE_NOTE is the fallback hint shown in the capture-unavailable
+ * banner when the snapshot carries no passive note explaining the limitation.
+ */
+export const DEFAULT_CAPTURE_NOTE = 'Run as administrator to enable capture.';
+
+/**
  * INFERENCE_STATUS_LABELS maps a lifecycle phase to a short human label.
  */
 export const INFERENCE_STATUS_LABELS: Readonly<Record<number, string>> = {

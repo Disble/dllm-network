@@ -17,8 +17,14 @@ export const useInferenceStore = create<InferenceStoreState>((set) => ({
   selectedId: null,
   query: '',
   statusFilter: 'all',
+  captureMode: '',
+  passiveNotes: [],
   ingest: (snapshot) =>
-    set((state) => ({ events: ingestSnapshotEvents(state.events, snapshot) })),
+    set((state) => ({
+      events: ingestSnapshotEvents(state.events, snapshot),
+      captureMode: snapshot.passive.mode,
+      passiveNotes: snapshot.passive.notes,
+    })),
   select: (id) => set({ selectedId: id }),
   setQuery: (query) => set({ query }),
   setStatusFilter: (statusFilter) => set({ statusFilter }),
@@ -63,5 +69,12 @@ export function resetInferenceStore(): void {
   if (bridgeUnsubscribe !== null) {
     bridgeUnsubscribe();
   }
-  useInferenceStore.setState({ events: [], selectedId: null, query: '', statusFilter: 'all' });
+  useInferenceStore.setState({
+    events: [],
+    selectedId: null,
+    query: '',
+    statusFilter: 'all',
+    captureMode: '',
+    passiveNotes: [],
+  });
 }

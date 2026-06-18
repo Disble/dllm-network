@@ -32,12 +32,24 @@ func NewExtractor() *Extractor { return &Extractor{} }
 // (e.g. nil body on an inference endpoint where a model field is required).
 func (e *Extractor) FromExchange(req, resp httpx.Message) (Inference, bool) {
 	meta := extractRequestMetadata(req)
+	requestBody, requestTruncated := TruncateBody(req.Body)
+	responseBody, responseTruncated := TruncateBody(resp.Body)
 	inf := Inference{
 		At:         time.Now(),
 		Endpoint:   meta.endpoint,
 		Method:     meta.method,
 		Model:      meta.model,
 		PromptSize: meta.promptSize,
+		// DevTools-Network detail fields, populated for every phase. ResponseBody
+		// here is the single terminal message; the pipeline overrides it with the
+		// full assembled stream for streamed responses.
+		StatusCode:            resp.StatusCode,
+		RequestBody:           requestBody,
+		RequestBodyTruncated:  requestTruncated,
+		ResponseBody:          responseBody,
+		ResponseBodyTruncated: responseTruncated,
+		RequestHeaders:        convertHeaders(req.Headers),
+		ResponseHeaders:       convertHeaders(resp.Headers),
 	}
 
 	// Non-inference endpoints produce metadata-only results.
@@ -60,6 +72,34 @@ func (e *Extractor) FromExchange(req, resp httpx.Message) (Inference, bool) {
 	inf.Streaming = true
 	inf.Tokens = extractTokenStats(resp.Body)
 	return inf, true
+}
+
+// MaxBodyBytes caps how many bytes of a request/response body are retained.
+// Prompts and generated text can be large; capturing them unbounded for every
+// retained event would blow up memory. Bodies longer than this are truncated
+// and flagged via the *Truncated fields (R6 bounded retention).
+const MaxBodyBytes = 64 * 1024
+
+// TruncateBody returns the body as a string capped at MaxBodyBytes, and whether
+// truncation occurred. A nil/empty body returns ("", false).
+func TruncateBody(body []byte) (string, bool) {
+	if len(body) <= MaxBodyBytes {
+		return string(body), false
+	}
+	return string(body[:MaxBodyBytes]), true
+}
+
+// convertHeaders maps wire headers into domain headers, preserving order.
+// Returns nil for an empty input so "not captured" stays distinct from "empty".
+func convertHeaders(in []httpx.Header) []Header {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]Header, len(in))
+	for i, h := range in {
+		out[i] = Header{Name: h.Name, Value: h.Value}
+	}
+	return out
 }
 
 // ---- metadata extraction (request side) ------------------------------------

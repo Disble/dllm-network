@@ -42,6 +42,9 @@ func TestInference_JSONIsCamelCase(t *testing.T) {
 		`"streaming"`, `"status"`, `"tokens"`,
 		`"promptEvalCount"`, `"evalCount"`, `"evalDuration"`,
 		`"totalDuration"`, `"loadDuration"`, `"perSec"`, `"latencyMS"`,
+		// Slice A DevTools-Network detail fields.
+		`"id"`, `"statusCode"`, `"requestBody"`, `"requestBodyTruncated"`,
+		`"responseBody"`, `"responseBodyTruncated"`, `"requestHeaders"`, `"responseHeaders"`,
 	}
 	for _, k := range wantKeys {
 		if !strings.Contains(got, k) {
@@ -49,7 +52,8 @@ func TestInference_JSONIsCamelCase(t *testing.T) {
 		}
 	}
 
-	for _, bad := range []string{`"Endpoint"`, `"Tokens"`, `"PerSec"`, `"PromptSize"`, `"Status"`} {
+	for _, bad := range []string{`"Endpoint"`, `"Tokens"`, `"PerSec"`, `"PromptSize"`, `"Status"`,
+		`"StatusCode"`, `"RequestBody"`, `"RequestHeaders"`, `"ResponseHeaders"`} {
 		if strings.Contains(got, bad) {
 			t.Errorf("found PascalCase key %s (breaks frontend contract): %s", bad, got)
 		}
@@ -66,5 +70,21 @@ func TestInference_NilTokensMarshalsNull(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `"tokens":null`) {
 		t.Errorf("expected nil tokens to marshal as null, got: %s", raw)
+	}
+	// Nil headers marshal as null — the frontend treats null as "not captured".
+	if !strings.Contains(string(raw), `"requestHeaders":null`) {
+		t.Errorf("expected nil requestHeaders to marshal as null, got: %s", raw)
+	}
+}
+
+// TestHeader_JSONIsCamelCase guards the HttpHeader wire contract (name/value).
+func TestHeader_JSONIsCamelCase(t *testing.T) {
+	raw, err := json.Marshal(Header{Name: "Content-Type", Value: "application/json"})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := string(raw)
+	if !strings.Contains(got, `"name"`) || !strings.Contains(got, `"value"`) {
+		t.Errorf("expected name/value keys, got: %s", got)
 	}
 }

@@ -288,6 +288,66 @@ func TestExtractor_TableDriven(t *testing.T) {
 	})
 }
 
+// ---- Slice A: DevTools-Network detail fields --------------------------------
+
+// TestExtractor_PopulatesDetailFields verifies the extractor surfaces request
+// body, request/response headers, and status code for the detail inspector.
+func TestExtractor_PopulatesDetailFields(t *testing.T) {
+	t.Parallel()
+
+	reqBody := marshalJSON(map[string]interface{}{"model": "llama3", "prompt": "hi"})
+	req := httpx.Message{
+		Kind:    httpx.KindRequest,
+		Method:  "POST",
+		Path:    "/api/generate",
+		Body:    reqBody,
+		Headers: []httpx.Header{{Name: "Content-Type", Value: "application/json"}},
+	}
+	resp := httpx.Message{
+		Kind:       httpx.KindResponse,
+		StatusCode: 200,
+		Headers:    []httpx.Header{{Name: "Content-Type", Value: "application/x-ndjson"}},
+		Body:       marshalJSON(map[string]interface{}{"done": true, "eval_count": 1, "eval_duration": 1000000000}),
+		Done:       true,
+	}
+
+	inf, ok := NewExtractor().FromExchange(req, resp)
+	if !ok {
+		t.Fatal("FromExchange returned ok=false")
+	}
+	if inf.StatusCode != 200 {
+		t.Errorf("StatusCode: got %d, want 200", inf.StatusCode)
+	}
+	if inf.RequestBody != string(reqBody) {
+		t.Errorf("RequestBody: got %q, want %q", inf.RequestBody, reqBody)
+	}
+	if len(inf.RequestHeaders) != 1 || inf.RequestHeaders[0].Name != "Content-Type" {
+		t.Errorf("RequestHeaders: got %+v", inf.RequestHeaders)
+	}
+	if len(inf.ResponseHeaders) != 1 || inf.ResponseHeaders[0].Value != "application/x-ndjson" {
+		t.Errorf("ResponseHeaders: got %+v", inf.ResponseHeaders)
+	}
+}
+
+// TestTruncateBody enforces the MaxBodyBytes cap and the truncation flag.
+func TestTruncateBody(t *testing.T) {
+	t.Parallel()
+
+	small := []byte("small body")
+	if s, truncated := TruncateBody(small); truncated || s != "small body" {
+		t.Errorf("small body: got (%q, %v), want (%q, false)", s, truncated, small)
+	}
+
+	big := make([]byte, MaxBodyBytes+100)
+	s, truncated := TruncateBody(big)
+	if !truncated {
+		t.Error("expected truncated=true for oversized body")
+	}
+	if len(s) != MaxBodyBytes {
+		t.Errorf("truncated length: got %d, want %d", len(s), MaxBodyBytes)
+	}
+}
+
 // ---- purity gate ------------------------------------------------------------
 
 // TestExtractor_RunsWithoutElevation asserts this package has zero dependency

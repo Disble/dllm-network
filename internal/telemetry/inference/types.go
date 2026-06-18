@@ -51,10 +51,22 @@ type TokenStats struct {
 	LatencyMS float64 `json:"latencyMS"`
 }
 
+// Header is one HTTP header field surfaced to the dashboard, in wire order with
+// original name casing. Mirrors the frontend HttpHeader contract.
+type Header struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 // Inference is the domain type produced by the extractor for a single captured
 // HTTP exchange. It crosses the anti-corruption boundary from the capture
 // pipeline into the dashboard projection layer.
 type Inference struct {
+	// ID is a stable identity for one logical exchange, assigned by the capture
+	// pipeline. It stays constant across the in-progress -> completed updates of
+	// the same request so the frontend upserts (not duplicates) on selection.
+	ID string `json:"id"`
+
 	// At is the wall-clock time the exchange was processed.
 	At time.Time `json:"at"`
 
@@ -71,4 +83,25 @@ type Inference struct {
 	// Tokens holds derived and raw performance metrics. It is nil when
 	// metrics are unavailable (Status==PhaseInProgress or PhaseMetadataOnly).
 	Tokens *TokenStats `json:"tokens"`
+
+	// ---- DevTools-Network detail fields (Slice A) --------------------------
+	// StatusCode is the HTTP response status code (0 when not observed).
+	StatusCode int `json:"statusCode"`
+
+	// RequestBody is the captured request body (prompt + options), truncated at
+	// MaxBodyBytes. RequestBodyTruncated reports whether truncation occurred.
+	RequestBody          string `json:"requestBody"`
+	RequestBodyTruncated bool   `json:"requestBodyTruncated"`
+
+	// ResponseBody is the assembled response body (the joined NDJSON stream or a
+	// single Content-Length payload), truncated at MaxBodyBytes. The capture
+	// pipeline assembles this across streamed lines; the extractor seeds it from
+	// the single terminal message. ResponseBodyTruncated reports truncation.
+	ResponseBody          string `json:"responseBody"`
+	ResponseBodyTruncated bool   `json:"responseBodyTruncated"`
+
+	// RequestHeaders / ResponseHeaders are the captured headers in wire order.
+	// Nil means not captured (passive mode), distinct from an empty exchange.
+	RequestHeaders  []Header `json:"requestHeaders"`
+	ResponseHeaders []Header `json:"responseHeaders"`
 }

@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { InferenceDetailBody } from '../inference-detail-body';
-import { formatJsonPretty } from '../inference-detail-body.helpers';
+import { formatJsonPretty, formatJsonStream } from '../inference-detail-body.helpers';
 
 afterEach(() => {
   cleanup();
@@ -30,6 +30,32 @@ describe('formatJsonPretty', () => {
   it('returns null for a bare JSON scalar (nothing to pretty-print)', () => {
     expect(formatJsonPretty('42')).toBeNull();
     expect(formatJsonPretty('"just a string"')).toBeNull();
+  });
+});
+
+describe('formatJsonStream', () => {
+  it('formats a single JSON object as one document', () => {
+    const result = formatJsonStream('{"a":1}');
+    expect(result).not.toBeNull();
+    expect(result?.count).toBe(1);
+    expect(result?.pretty).toContain('"a": 1');
+  });
+
+  it('formats a multi-document stream (NDJSON) with a count', () => {
+    const result = formatJsonStream('{"a":1}\n{"b":2}\n{"c":3}');
+    expect(result?.count).toBe(3);
+    expect(result?.pretty).toContain('"a": 1');
+    expect(result?.pretty).toContain('"c": 3');
+  });
+
+  it('ignores non-JSON lines like the SSE [DONE] sentinel', () => {
+    const result = formatJsonStream('{"a":1}\n{"b":2}\n[DONE]');
+    expect(result?.count).toBe(2);
+  });
+
+  it('returns null for non-JSON text and bare scalars', () => {
+    expect(formatJsonStream('hello world')).toBeNull();
+    expect(formatJsonStream('42')).toBeNull();
   });
 });
 

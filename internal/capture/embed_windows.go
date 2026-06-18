@@ -17,11 +17,10 @@ import (
 // both files must be co-located with the binary.
 //
 // The go:embed paths are relative to the package source file, which lives at
-// internal/capture/. The assets are copied into internal/capture/windivert/ so
-// that go:embed can reference them (go:embed does not allow ".." path traversal).
-// The canonical source remains tools/windivert/WinDivert-2.2.2-A/x64/; the
-// copies under internal/capture/windivert/ are generated artifacts that MUST be
-// kept in sync with the canonical source.
+// internal/capture/. The checked-in assets live under internal/capture/windivert/
+// so go:embed can reference them directly (go:embed does not allow ".." path
+// traversal). Local extraction, POC, and verification files under tools/ are
+// developer scratch artifacts and are intentionally ignored.
 
 //go:embed windivert/WinDivert.dll
 var windivertDLL []byte

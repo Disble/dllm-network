@@ -213,7 +213,7 @@ func (projector *Projector) Project(input ProjectionInput, recent RecentReader) 
 			System: confirmedSystem(input.System),
 		},
 		Inferred: InferredState{
-			Current: currentActivity,
+			Current: normalizeActivityEvent(currentActivity),
 			Recent:  recentActivities,
 		},
 		Recent: RecentState{
@@ -225,9 +225,30 @@ func (projector *Projector) Project(input ProjectionInput, recent RecentReader) 
 			Connections: systemHealth(input.System.Connections.Meta),
 			Host:        systemHealth(input.System.Host.Meta),
 		},
-		Passive:   captureMode(input.Capture),
-		Inference: input.Inference,
+		Passive:   normalizePassiveLimitMode(captureMode(input.Capture)),
+		Inference: normalizeInferenceState(input.Inference),
 	}
+}
+
+func normalizeActivityEvent(event activity.Event) activity.Event {
+	if event.Evidence == nil {
+		event.Evidence = []activity.Evidence{}
+	}
+	return event
+}
+
+func normalizeInferenceState(state InferenceState) InferenceState {
+	if state.Recent == nil {
+		state.Recent = []inference.Inference{}
+	}
+	return state
+}
+
+func normalizePassiveLimitMode(mode PassiveLimitMode) PassiveLimitMode {
+	if mode.Notes == nil {
+		mode.Notes = []string{}
+	}
+	return mode
 }
 
 func confirmedOllama(snapshot ollama.PollSnapshot) ConfirmedOllamaState {
@@ -297,7 +318,7 @@ func confirmedSystem(snapshot orchestrator.SystemSnapshot) ConfirmedSystemState 
 
 func recentState(recent RecentReader) ([]RecentConfirmedModel, []activity.Event) {
 	if recent == nil {
-		return nil, nil
+		return []RecentConfirmedModel{}, []activity.Event{}
 	}
 
 	snapshots := recent.Snapshots()
@@ -310,7 +331,11 @@ func recentState(recent RecentReader) ([]RecentConfirmedModel, []activity.Event)
 	}
 
 	activities := recent.Activities()
-	return confirmedModels, append([]activity.Event(nil), activities...)
+	recentActivities := make([]activity.Event, 0, len(activities))
+	for _, event := range activities {
+		recentActivities = append(recentActivities, normalizeActivityEvent(event))
+	}
+	return confirmedModels, recentActivities
 }
 
 func ollamaHealth(meta ollama.SnapshotMeta) HealthState {

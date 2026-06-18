@@ -2,12 +2,14 @@ package dashboard
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
 	"ollama-telemetry/internal/activity"
 	"ollama-telemetry/internal/store"
+	"ollama-telemetry/internal/telemetry/inference"
 	"ollama-telemetry/internal/telemetry/ollama"
 	"ollama-telemetry/internal/telemetry/orchestrator"
 	"ollama-telemetry/internal/telemetry/system"
@@ -149,6 +151,66 @@ func TestProjectorFallsBackToRecentActivityWhenCurrentActivityIsMissing(t *testi
 	}
 	if snapshot.Confirmed.Ollama.PrimaryModel != "" {
 		t.Fatalf("expected no primary model when no running model exists, got %q", snapshot.Confirmed.Ollama.PrimaryModel)
+	}
+}
+
+func TestProjectorSnapshotJSONUsesArraysForFrontendCollections(t *testing.T) {
+	t.Parallel()
+
+	publishedAt := time.Date(2026, time.June, 17, 0, 0, 0, 0, time.UTC)
+	projector := NewProjector(func() time.Time { return publishedAt })
+
+	snapshot := projector.Project(ProjectionInput{
+		Capture: CaptureInput{
+			SourceActive:    true,
+			HasLatency:      true,
+			HasTokenCounts:  true,
+			HasPayload:      true,
+			HasStatus:       true,
+			HasStreamChunks: true,
+		},
+	}, stubRecentReader{})
+
+	payload, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+
+	var decoded struct {
+		Inferred struct {
+			Current struct {
+				Evidence []activity.Evidence `json:"evidence"`
+			} `json:"current"`
+			Recent []activity.Event `json:"recent"`
+		} `json:"inferred"`
+		Recent struct {
+			ConfirmedModels []RecentConfirmedModel `json:"confirmedModels"`
+		} `json:"recent"`
+		Inference struct {
+			Recent []inference.Inference `json:"recent"`
+		} `json:"inference"`
+		Passive struct {
+			Notes []string `json:"notes"`
+		} `json:"passive"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal snapshot payload: %v", err)
+	}
+
+	if decoded.Inferred.Current.Evidence == nil {
+		t.Fatal("expected inferred.current.evidence to marshal as [] instead of null")
+	}
+	if decoded.Inferred.Recent == nil {
+		t.Fatal("expected inferred.recent to marshal as [] instead of null")
+	}
+	if decoded.Recent.ConfirmedModels == nil {
+		t.Fatal("expected recent.confirmedModels to marshal as [] instead of null")
+	}
+	if decoded.Inference.Recent == nil {
+		t.Fatal("expected inference.recent to marshal as [] instead of null")
+	}
+	if decoded.Passive.Notes == nil {
+		t.Fatal("expected passive.notes to marshal as [] instead of null")
 	}
 }
 

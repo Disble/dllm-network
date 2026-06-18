@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 
 import type { DashboardSnapshotSource } from '../../infrastructure/dashboard-snapshot-source';
 import { connectInferenceStore, useInferenceStore } from '../../shared/store/inference-store';
@@ -26,11 +26,8 @@ export function useInferenceExplorer(source?: DashboardSnapshotSource): UseInfer
   const captureMode = useInferenceStore((state) => state.captureMode);
   const passiveNotes = useInferenceStore((state) => state.passiveNotes);
 
-  const rows = useMemo(
-    () => selectFilteredEvents(events, query, statusFilter),
-    [events, query, statusFilter],
-  );
-  const aggregates = useMemo(() => computeAggregates(rows), [rows]);
+  const rows = selectFilteredEvents(events, query, statusFilter);
+  const aggregates = computeAggregates(rows);
   const captureUnavailable = selectCaptureUnavailable(events, captureMode);
   const captureNote = passiveNotes[passiveNotes.length - 1] ?? DEFAULT_CAPTURE_NOTE;
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect } from 'react';
 
 import type { DashboardSnapshotSource } from '../../infrastructure/dashboard-snapshot-source';
 import { formatClockDateTime } from '../../shared/helpers/formatters.helpers';
@@ -14,33 +14,31 @@ import type { UseInferenceMetricsResult } from './inference-explorer.types';
 export function useInferenceMetrics(source?: DashboardSnapshotSource): UseInferenceMetricsResult {
   const events = useInferenceStore((state) => state.events);
 
-  const items = useMemo(() => {
-    const aggregates = computeAggregates(events);
-    return [
-      { label: 'Requests', value: String(aggregates.count), caption: 'Total' },
-      {
-        label: 'Avg tok/s',
-        value: aggregates.avgPerSec === null ? '—' : `${aggregates.avgPerSec.toFixed(1)} tok/s`,
-        caption: 'Average',
-      },
-      {
-        label: 'P50 latency',
-        value: aggregates.p50LatencyMS === null ? '—' : `${Math.round(aggregates.p50LatencyMS)} ms`,
-        caption: 'Median',
-      },
-      {
-        label: 'P95 latency',
-        value: aggregates.p95LatencyMS === null ? '—' : `${Math.round(aggregates.p95LatencyMS)} ms`,
-        caption: '95th Percentile',
-      },
-      { label: 'Eval count', value: String(aggregates.totalEvalCount), caption: 'Total' },
-      {
-        label: 'Timestamp',
-        value: aggregates.lastUpdated === '' ? '—' : formatClockDateTime(aggregates.lastUpdated),
-        caption: 'Last Updated',
-      },
-    ];
-  }, [events]);
+  const aggregates = computeAggregates(events);
+  const items = [
+    { label: 'Requests', value: String(aggregates.count), caption: 'Total' },
+    {
+      label: 'Avg tok/s',
+      value: aggregates.avgPerSec === null ? '—' : `${aggregates.avgPerSec.toFixed(1)} tok/s`,
+      caption: 'Average',
+    },
+    {
+      label: 'P50 latency',
+      value: aggregates.p50LatencyMS === null ? '—' : `${Math.round(aggregates.p50LatencyMS)} ms`,
+      caption: 'Median',
+    },
+    {
+      label: 'P95 latency',
+      value: aggregates.p95LatencyMS === null ? '—' : `${Math.round(aggregates.p95LatencyMS)} ms`,
+      caption: '95th Percentile',
+    },
+    { label: 'Eval count', value: String(aggregates.totalEvalCount), caption: 'Total' },
+    {
+      label: 'Timestamp',
+      value: aggregates.lastUpdated === '' ? '—' : formatClockDateTime(aggregates.lastUpdated),
+      caption: 'Last Updated',
+    },
+  ];
 
   useEffect(() => {
     connectInferenceStore(source);

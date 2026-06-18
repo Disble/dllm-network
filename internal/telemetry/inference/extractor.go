@@ -1,17 +1,27 @@
 package inference
 
 import (
+	"bytes"
 	"encoding/json"
 	"time"
 
 	"ollama-telemetry/internal/capture/httpx"
 )
 
-// inferenceEndpoints is the set of Ollama endpoints that produce token
+// inferenceEndpoints is the set of Ollama-native endpoints that produce token
 // performance metrics in their done:true terminal NDJSON line.
 var inferenceEndpoints = map[string]bool{
 	"/api/generate": true,
 	"/api/chat":     true,
+}
+
+// openaiEndpoints is the set of Ollama's OpenAI-compatible endpoints. Their
+// responses are Server-Sent Events (streaming: data: {json} ... data: [DONE])
+// or a single chat.completion JSON (non-streaming), and token counts arrive in
+// an OpenAI-style `usage` object — NOT the Ollama done:true NDJSON shape.
+var openaiEndpoints = map[string]bool{
+	"/v1/chat/completions": true,
+	"/v1/completions":      true,
 }
 
 // Extractor derives Inference domain values from captured HTTP exchanges.
@@ -52,6 +62,20 @@ func (e *Extractor) FromExchange(req, resp httpx.Message) (Inference, bool) {
 		ResponseHeaders:       convertHeaders(resp.Headers),
 	}
 
+	// OpenAI-compatible endpoint: SSE / chat.completion semantics.
+	if openaiEndpoints[meta.endpoint] {
+		inf.Streaming = true
+		if openAIDone(resp.Body) {
+			inf.Status = PhaseCompleted
+			// Counts come from a `usage` object in THIS body (non-stream) or, for
+			// streaming, from the accumulated body the pipeline supplies later.
+			inf.Tokens = ExtractOpenAIStats(resp.Body)
+		} else {
+			inf.Status = PhaseInProgress
+		}
+		return inf, true
+	}
+
 	// Non-inference endpoints produce metadata-only results.
 	if !inferenceEndpoints[meta.endpoint] {
 		inf.Status = PhaseMetadataOnly
@@ -72,6 +96,55 @@ func (e *Extractor) FromExchange(req, resp httpx.Message) (Inference, bool) {
 	inf.Streaming = true
 	inf.Tokens = extractTokenStats(resp.Body)
 	return inf, true
+}
+
+// openAIDone reports whether an OpenAI-compatible response body marks the
+// exchange complete: the SSE [DONE] sentinel (streaming) or a full
+// chat.completion object (non-streaming). Streaming content/usage chunks carry
+// object "chat.completion.chunk" and are NOT terminal.
+func openAIDone(body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+	if bytes.Equal(trimmed, []byte("[DONE]")) {
+		return true
+	}
+	var obj struct {
+		Object string `json:"object"`
+	}
+	if err := json.Unmarshal(trimmed, &obj); err != nil {
+		return false
+	}
+	return obj.Object == "chat.completion"
+}
+
+// ExtractOpenAIStats scans an OpenAI-compatible response body for the first
+// `usage` object and returns the token counts. The body may be a single
+// chat.completion JSON (non-streaming) or an assembled SSE blob of
+// `data: {json}` lines (streaming). Returns nil — never fabricated — when no
+// usage is present (e.g. a stream without stream_options.include_usage).
+//
+// OpenAI exposes only token COUNTS, not Ollama's nanosecond durations, so
+// PerSec/LatencyMS stay zero here; the pipeline derives latency from wall clock.
+func ExtractOpenAIStats(body []byte) *TokenStats {
+	for _, line := range bytes.Split(body, []byte("\n")) {
+		line = bytes.TrimSpace(bytes.TrimPrefix(bytes.TrimSpace(line), []byte("data: ")))
+		if len(line) == 0 {
+			continue
+		}
+		var obj struct {
+			Usage *struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+			} `json:"usage"`
+		}
+		if err := json.Unmarshal(line, &obj); err != nil || obj.Usage == nil {
+			continue
+		}
+		return &TokenStats{
+			PromptEvalCount: obj.Usage.PromptTokens,
+			EvalCount:       obj.Usage.CompletionTokens,
+		}
+	}
+	return nil
 }
 
 // MaxBodyBytes caps how many bytes of a request/response body are retained.

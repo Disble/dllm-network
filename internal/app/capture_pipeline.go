@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"time"
 
 	"ollama-telemetry/internal/capture"
 	"ollama-telemetry/internal/capture/httpx"
@@ -114,6 +115,11 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 	// inspector. Reset when a new request begins on the same keep-alive tuple.
 	respAccum := make(map[reassembly.FourTuple][]byte)
 
+	// reqTime records when each request was observed, so latency for endpoints
+	// that carry no server-side durations (OpenAI /v1) can be derived from wall
+	// clock (request -> completion).
+	reqTime := make(map[reassembly.FourTuple]time.Time)
+
 	// idSeq is a monotonic counter feeding stable per-exchange ids.
 	idSeq := 0
 
@@ -177,7 +183,21 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 						requestBuf[key] = m
 						idSeq++
 						reqID[key] = inferenceID(idSeq)
+						reqTime[key] = seg.At    // for wall-clock latency (OpenAI /v1)
 						delete(respAccum, key) // fresh exchange on this connection
+
+						// Emit an in-progress inference the moment the request is
+						// observed, before any response byte arrives. For stream:false
+						// generations the server stays silent until done, so a
+						// response-only trigger would leave the row invisible for
+						// seconds. Pairing the request with an empty response yields
+						// PhaseInProgress (Tokens nil — never fabricated). Metadata-only
+						// polls (/api/tags, /api/ps, …) are skipped so they don't
+						// overwrite the displayed inference.
+						if inProgress, ok := p.extractor.FromExchange(m, httpx.Message{}); ok && inProgress.Status != inference.PhaseMetadataOnly {
+							inProgress.ID = reqID[key]
+							current = inProgress
+						}
 					}
 				}
 			case capture.DirFromServer:
@@ -213,10 +233,19 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					// response body override the per-line extractor values.
 					inf.ID = reqID[key]
 					inf.ResponseBody, inf.ResponseBodyTruncated = inference.TruncateBody(respAccum[key])
+					// OpenAI streaming completes on the [DONE] sentinel, which carries
+					// no counts — the `usage` arrived in an earlier SSE chunk. Recover
+					// the counts from the assembled body when the per-line extractor
+					// could not (Tokens still nil on a completed exchange).
+					if inf.Status == inference.PhaseCompleted && inf.Tokens == nil {
+						inf.Tokens = inference.ExtractOpenAIStats(respAccum[key])
+						deriveWallClockTiming(inf.Tokens, reqTime[key], seg.At)
+					}
 					current = inf
 					if inf.Status == inference.PhaseCompleted {
 						p.recent.RecordInferenceCompletion(inf)
 						delete(respAccum, key) // exchange done; release buffer
+						delete(reqTime, key)
 					}
 				}
 			}
@@ -234,6 +263,26 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 			Capture:   captureInput,
 			Inference: inferenceState,
 		})
+	}
+}
+
+// deriveWallClockTiming fills latency + tokens/sec from the observed request ->
+// completion span for exchanges whose body carries no server-side durations
+// (OpenAI /v1). It is a best-effort passive measurement: total elapsed wall
+// time, not Ollama's internal eval_duration. No-op when stats or the request
+// time are unavailable, so counts-only completions stay honest.
+func deriveWallClockTiming(stats *inference.TokenStats, reqAt, doneAt time.Time) {
+	if stats == nil || reqAt.IsZero() {
+		return
+	}
+	elapsed := doneAt.Sub(reqAt)
+	if elapsed <= 0 {
+		return
+	}
+	stats.TotalDuration = elapsed
+	stats.LatencyMS = float64(elapsed) / 1e6
+	if stats.EvalCount > 0 {
+		stats.PerSec = float64(stats.EvalCount) / elapsed.Seconds()
 	}
 }
 

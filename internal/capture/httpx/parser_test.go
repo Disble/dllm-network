@@ -46,6 +46,46 @@ func buildChunkedResponse(body string, includeTerminal bool) []byte {
 	return []byte(s)
 }
 
+// buildSSEResponse builds a minimal chunked text/event-stream response whose
+// body carries the given SSE `data:` events in a single chunk.
+func buildSSEResponse(body string) []byte {
+	s := "HTTP/1.1 200 OK\r\n" +
+		"Content-Type: text/event-stream\r\n" +
+		"Transfer-Encoding: chunked\r\n" +
+		"\r\n" +
+		fmt.Sprintf("%x\r\n", len(body)) +
+		body + "\r\n" +
+		"0\r\n\r\n"
+	return []byte(s)
+}
+
+// TestParser_SSEStripsDataPrefix verifies that for a text/event-stream response
+// the parser strips the `data: ` SSE prefix so downstream sees clean inner
+// payloads (the OpenAI JSON and the [DONE] sentinel), and skips blank lines.
+func TestParser_SSEStripsDataPrefix(t *testing.T) {
+	t.Parallel()
+
+	body := "data: {\"object\":\"chat.completion.chunk\",\"choices\":[]}\n\n" +
+		"data: [DONE]\n\n"
+	msgs := NewParser().Feed(buildSSEResponse(body))
+
+	var bodies []string
+	for _, m := range msgs {
+		if m.Kind == KindResponse {
+			bodies = append(bodies, string(m.Body))
+		}
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("expected 2 SSE payloads, got %d: %v", len(bodies), bodies)
+	}
+	if bodies[0] != `{"object":"chat.completion.chunk","choices":[]}` {
+		t.Errorf("first payload not de-prefixed: %q", bodies[0])
+	}
+	if bodies[1] != "[DONE]" {
+		t.Errorf("second payload should be the [DONE] sentinel, got %q", bodies[1])
+	}
+}
+
 // ---- 2.1 RED: Content-Length body -------------------------------------------
 
 func TestParser_ContentLengthBody(t *testing.T) {

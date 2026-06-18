@@ -66,6 +66,7 @@ type parsedHeaders struct {
 	contentLength int      // -1 means not set
 	chunked       bool     // Transfer-Encoding: chunked
 	isNDJSON      bool     // Content-Type: application/x-ndjson
+	isSSE         bool     // Content-Type: text/event-stream (OpenAI streaming)
 	headers       []Header // all parsed header fields, in wire order
 }
 
@@ -370,7 +371,10 @@ func (p *Parser) emitChunkAsNDJSON(chunk []byte) []Message {
 		if len(trimmed) == 0 {
 			return nil
 		}
-		return []Message{p.emitNDJSONLine(trimmed)}
+		if payload, ok := p.framePayload(trimmed); ok {
+			return []Message{p.emitNDJSONLine(payload)}
+		}
+		return nil
 	}
 
 	// Cases 1 & 3: scan newline-delimited lines.
@@ -382,7 +386,11 @@ func (p *Parser) emitChunkAsNDJSON(chunk []byte) []Message {
 		if len(trimmed) == 0 {
 			continue
 		}
-		out = append(out, p.emitNDJSONLine(trimmed))
+		payload, ok := p.framePayload(trimmed)
+		if !ok {
+			continue
+		}
+		out = append(out, p.emitNDJSONLine(payload))
 	}
 
 	// If chunk does NOT end with \n, the last scanned line is actually a
@@ -398,6 +406,20 @@ func (p *Parser) emitChunkAsNDJSON(chunk []byte) []Message {
 	}
 
 	return out
+}
+
+// framePayload maps a raw line to the JSON payload to emit. For an SSE response
+// (Content-Type: text/event-stream) it keeps only `data:` lines and strips the
+// prefix, so downstream sees the inner OpenAI JSON (or the [DONE] sentinel) and
+// SSE comment/event lines are dropped. For NDJSON it returns the line unchanged.
+func (p *Parser) framePayload(line []byte) ([]byte, bool) {
+	if !p.current.isSSE {
+		return line, true
+	}
+	if !bytes.HasPrefix(line, []byte("data:")) {
+		return nil, false // event:, id:, :comment — not a data payload
+	}
+	return bytes.TrimSpace(line[len("data:"):]), true
 }
 
 // emitNDJSONLine parses a single NDJSON line and returns a Message.
@@ -493,6 +515,9 @@ func parseHeaderBlock(block []byte) parsedHeaders {
 			lv := strings.ToLower(val)
 			if strings.Contains(lv, "ndjson") || strings.Contains(lv, "x-ndjson") {
 				ph.isNDJSON = true
+			}
+			if strings.Contains(lv, "text/event-stream") {
+				ph.isSSE = true
 			}
 		}
 	}

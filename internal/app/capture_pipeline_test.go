@@ -335,6 +335,130 @@ func TestCapturePipeline_IgnoresMetadataOnlyPolls(t *testing.T) {
 	}
 }
 
+// TestCapturePipeline_EmitsInProgressOnRequest asserts that an inference row
+// appears the moment the REQUEST is observed — before any response arrives.
+// This is the stream:false case the user hit: a generation can take many
+// seconds during which the server sends nothing, so a response-only trigger
+// leaves the row invisible until completion. The in-progress event must carry
+// the model but MUST NOT fabricate token metrics (Tokens stays nil).
+func TestCapturePipeline_EmitsInProgressOnRequest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	baseTime := time.Now()
+	tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+	// Only the REQUEST segment — the response has not come back yet.
+	segments := []capture.Segment{
+		{Tuple: tuple, Dir: capture.DirToServer, Payload: buildFakeGenerateRequest(), SeqNo: 0, At: baseTime},
+	}
+
+	var emitted []dashboard.Snapshot
+	emitFn := func(ctx context.Context, event string, payload ...any) {
+		if event == dashboard.TopicDashboardSnapshot {
+			if snap, ok := payload[0].(dashboard.Snapshot); ok {
+				emitted = append(emitted, snap)
+			}
+		}
+	}
+
+	app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	var inProgress *dashboard.Snapshot
+	for time.Now().Before(deadline) && inProgress == nil {
+		for i := range emitted {
+			cur := emitted[i].Inference.Current
+			if cur.Endpoint == "/api/generate" && cur.Status == inference.PhaseInProgress {
+				inProgress = &emitted[i]
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	if inProgress == nil {
+		t.Fatalf("expected an in-progress inference emitted on request observation (before any response); got %d snapshots", len(emitted))
+	}
+	cur := inProgress.Inference.Current
+	if cur.Model != "llama3" {
+		t.Errorf("in-progress model: got %q, want llama3", cur.Model)
+	}
+	if cur.Tokens != nil {
+		t.Error("in-progress inference must not fabricate token metrics (Tokens must be nil)")
+	}
+}
+
+// TestCapturePipeline_OpenAIChatCompletions asserts the pipeline captures a
+// streamed POST /v1/chat/completions (Ollama's OpenAI-compatible API, SSE
+// transport) end to end: it must NOT be filtered as metadata-only, it must
+// complete on the [DONE] sentinel, and token counts must come from the SSE
+// `usage` chunk in the assembled body.
+func TestCapturePipeline_OpenAIChatCompletions(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	baseTime := time.Now()
+	tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+	segments := []capture.Segment{
+		{Tuple: tuple, Dir: capture.DirToServer, Payload: buildFakeOpenAIRequest(), SeqNo: 0, At: baseTime},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: buildFakeOpenAIResponse(), SeqNo: 0, At: baseTime.Add(time.Millisecond)},
+	}
+
+	var emitted []dashboard.Snapshot
+	emitFn := func(ctx context.Context, event string, payload ...any) {
+		if event == dashboard.TopicDashboardSnapshot {
+			if snap, ok := payload[0].(dashboard.Snapshot); ok {
+				emitted = append(emitted, snap)
+			}
+		}
+	}
+
+	app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	var done *dashboard.Snapshot
+	for time.Now().Before(deadline) && done == nil {
+		for i := range emitted {
+			cur := emitted[i].Inference.Current
+			if cur.Endpoint == "/v1/chat/completions" && cur.Status == 1 { // PhaseCompleted
+				done = &emitted[i]
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if done == nil {
+		t.Fatalf("no completed /v1/chat/completions inference; got %d snapshots", len(emitted))
+	}
+
+	cur := done.Inference.Current
+	if cur.Model != "gemma4:12b" {
+		t.Errorf("model: got %q, want gemma4:12b", cur.Model)
+	}
+	if cur.Tokens == nil {
+		t.Fatal("expected token counts from the SSE usage chunk")
+	}
+	if cur.Tokens.PromptEvalCount != 21 || cur.Tokens.EvalCount != 5 {
+		t.Errorf("counts: got prompt=%d eval=%d, want 21/5", cur.Tokens.PromptEvalCount, cur.Tokens.EvalCount)
+	}
+	// OpenAI bodies carry no durations — latency must be derived from wall clock
+	// (request observed -> completion) so the table's latency/tok-s/waterfall work.
+	if cur.Tokens.LatencyMS <= 0 {
+		t.Errorf("expected wall-clock latency > 0 for /v1, got %v", cur.Tokens.LatencyMS)
+	}
+	if cur.Tokens.PerSec <= 0 {
+		t.Errorf("expected derived tok/s > 0 for /v1, got %v", cur.Tokens.PerSec)
+	}
+}
+
 // TestCapturePipeline_QuitCancelsCapture asserts that Quit cancels the capture
 // goroutine context and Close is called on the source, within ShutdownTimeout.
 func TestCapturePipeline_QuitCancelsCapture(t *testing.T) {
@@ -415,6 +539,27 @@ func buildFakeGenerateResponse() []byte {
 
 	return []byte("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: application/x-ndjson\r\n\r\n" +
 		chunk1 + chunk2 + terminal)
+}
+
+// buildFakeOpenAIRequest produces a POST /v1/chat/completions request with an
+// OpenAI-style body (model + messages).
+func buildFakeOpenAIRequest() []byte {
+	body := `{"model":"gemma4:12b","messages":[{"role":"user","content":"hi"}],"stream":true}`
+	return []byte("POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1:11434\r\nContent-Type: application/json\r\nContent-Length: " +
+		itoa(len(body)) + "\r\n\r\n" + body)
+}
+
+// buildFakeOpenAIResponse produces a chunked text/event-stream response with a
+// content chunk, a usage chunk (token counts), and the [DONE] sentinel —
+// matching Ollama's real OpenAI-compatible streaming output.
+func buildFakeOpenAIResponse() []byte {
+	content := `data: {"object":"chat.completion.chunk","model":"gemma4:12b","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}` + "\n\n"
+	usage := `data: {"object":"chat.completion.chunk","model":"gemma4:12b","choices":[],"usage":{"prompt_tokens":21,"completion_tokens":5,"total_tokens":26}}` + "\n\n"
+	done := "data: [DONE]\n\n"
+
+	chunk := func(s string) string { return itohex(len(s)) + "\r\n" + s + "\r\n" }
+	return []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n" +
+		chunk(content) + chunk(usage) + chunk(done) + "0\r\n\r\n")
 }
 
 func itoa(n int) string {

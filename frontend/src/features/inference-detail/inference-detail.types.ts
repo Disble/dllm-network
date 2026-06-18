@@ -3,8 +3,31 @@ import type { HttpHeader, InferenceEvent } from '../../shared/contracts/dashboar
 
 /**
  * InferenceDetailTabKey enumerates the DevTools-style detail tabs (R3).
+ * `generation` is the LLM-aware view of an Ollama generate/chat response body.
  */
-export type InferenceDetailTabKey = 'overview' | 'payload' | 'response' | 'headers' | 'timing';
+export type InferenceDetailTabKey = 'overview' | 'payload' | 'response' | 'generation' | 'headers' | 'timing';
+
+/**
+ * GenerationView is the parsed, display-ready facet of an Ollama generate/chat
+ * response body. The wire body is plain JSON (NOT encrypted): `response` is a
+ * (possibly JSON) string and `context` is an array of tokenizer IDs we
+ * summarise rather than dump. Built by buildGenerationView; null when the body
+ * is absent or is not a generation payload.
+ */
+export interface GenerationView {
+  /** Model output: the `response` field, re-indented when it is itself JSON. */
+  readonly output: string;
+  /** The verbatim `response` field, before any pretty-printing (for the Raw view + Copy). */
+  readonly outputRaw: string;
+  /** True when `output` was valid JSON we pretty-printed; false for plain text. */
+  readonly outputIsJson: boolean;
+  /** Token count of the `context` array, or null when context is absent. */
+  readonly contextTokenCount: number | null;
+  /** Short, comma-joined preview of the first context token IDs (ellipsis when long). */
+  readonly contextPreview: string;
+  /** The `done_reason` field, or null when absent. */
+  readonly doneReason: string | null;
+}
 
 /**
  * InferenceDetailViewModel holds the precomputed Overview-tab fields.
@@ -78,6 +101,35 @@ export interface InferenceDetailBodyProps {
   readonly body?: string;
   /** Whether the body was truncated at the capture byte cap. */
   readonly truncated?: boolean;
+}
+
+/**
+ * InferenceDetailCodeBlockProps is the boundary for the shared code viewer used
+ * by Payload, Response and the Generation output. Renders `raw` verbatim, offers
+ * a Pretty/Raw toggle only when `pretty` is provided, and always exposes a Copy
+ * button that copies the verbatim `raw` text.
+ */
+export interface InferenceDetailCodeBlockProps {
+  /** Verbatim body text. Always copyable; shown when Raw is selected. */
+  readonly raw: string;
+  /** Pretty-printed form. When present, enables the Pretty/Raw toggle (Pretty default). */
+  readonly pretty?: string | null;
+  /** Whether the underlying body was truncated at the capture byte cap. */
+  readonly truncated?: boolean;
+}
+
+/**
+ * InferenceDetailContextToggleProps is the boundary for the context disclosure
+ * control (count label + rotating chevron). Presentational: the parent owns the
+ * open state and the toggle handler.
+ */
+export interface InferenceDetailContextToggleProps {
+  /** Text shown beside the chevron (e.g. "521 tokens"). */
+  readonly label: string;
+  /** Whether the disclosure is expanded (rotates the chevron). */
+  readonly open: boolean;
+  /** Invoked when the control is activated. */
+  readonly onToggle: () => void;
 }
 
 /**

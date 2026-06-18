@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { StatusCodePill } from '../../shared/ui/atoms/status-code-pill';
 import { INFERENCE_DETAIL_STATUS_LABELS, INFERENCE_DETAIL_TABS } from './inference-detail.constants';
+import { InferenceDetailGeneration } from './inference-detail-generation';
 import { InferenceDetailHeaders } from './inference-detail-headers';
 import { InferenceDetailOverview } from './inference-detail-overview';
 import { InferenceDetailPayload } from './inference-detail-payload';
@@ -55,6 +56,7 @@ export function InferenceDetailPanel({ event, overview }: Readonly<InferenceDeta
         {activeTab === 'overview' ? <InferenceDetailOverview viewModel={overview} /> : null}
         {activeTab === 'payload' ? <InferenceDetailPayload event={event} /> : null}
         {activeTab === 'response' ? <InferenceDetailResponse event={event} /> : null}
+        {activeTab === 'generation' ? <InferenceDetailGeneration event={event} /> : null}
         {activeTab === 'headers' ? <InferenceDetailHeaders event={event} /> : null}
         {activeTab === 'timing' ? <InferenceDetailTiming event={event} /> : null}
       </div>

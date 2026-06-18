@@ -15,6 +15,10 @@ export function InferenceTable({ rows, selectedId, onSelect }: Readonly<Inferenc
   // eslint-disable-next-line no-undef -- DOM lib type; the flat config only declares document/window as globals.
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Waterfall scale reference: the slowest request in the visible set. Guarded at
+  // >= 1 so a single zero-latency row never divides by zero.
+  const maxLatencyMS = Math.max(1, ...rows.map((row) => row.tokens?.latencyMS ?? 0));
+
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -33,6 +37,7 @@ export function InferenceTable({ rows, selectedId, onSelect }: Readonly<Inferenc
         <span className="inference-table__cell inference-table__cell--rate">Tok/s</span>
         <span className="inference-table__cell inference-table__cell--latency">Latency</span>
         <span className="inference-table__cell inference-table__cell--time">Time</span>
+        <span className="inference-table__cell inference-table__cell--waterfall">Waterfall</span>
       </div>
 
       <div ref={scrollRef} className="inference-table__scroll" role="rowgroup">
@@ -49,6 +54,7 @@ export function InferenceTable({ rows, selectedId, onSelect }: Readonly<Inferenc
                   event={event}
                   rowId={rowId}
                   isSelected={rowId === selectedId}
+                  maxLatencyMS={maxLatencyMS}
                   style={{
                     position: 'absolute',
                     top: 0,

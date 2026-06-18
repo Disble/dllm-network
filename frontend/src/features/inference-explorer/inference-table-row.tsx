@@ -2,6 +2,7 @@ import { formatClockTime } from '../../shared/helpers/formatters.helpers';
 import { LatencyPill } from '../../shared/ui/atoms/latency-pill';
 import { StatusCodePill } from '../../shared/ui/atoms/status-code-pill';
 import { TokenRateBadge } from '../../shared/ui/atoms/token-rate-badge';
+import { WaterfallBar } from '../../shared/ui/atoms/waterfall-bar';
 import { INFERENCE_STATUS_LABELS } from './inference-explorer.constants';
 import type { InferenceTableRowProps } from './inference-explorer.types';
 
@@ -10,10 +11,12 @@ import type { InferenceTableRowProps } from './inference-explorer.types';
  * Pure presentational: derives display values from the event and atoms; the
  * absolute position comes from the virtualizer via `style`.
  */
-export function InferenceTableRow({ event, rowId, isSelected, style, onSelect }: Readonly<InferenceTableRowProps>) {
+export function InferenceTableRow({ event, rowId, isSelected, maxLatencyMS, style, onSelect }: Readonly<InferenceTableRowProps>) {
   const statusLabel = INFERENCE_STATUS_LABELS[event.status] ?? 'unknown';
   const perSec = event.tokens?.perSec ?? null;
   const latencyMS = event.tokens?.latencyMS ?? null;
+  const loadMS = event.tokens != null ? event.tokens.loadDuration / 1e6 : null;
+  const evalMS = event.tokens != null ? event.tokens.evalDuration / 1e6 : null;
 
   return (
     <button
@@ -32,6 +35,9 @@ export function InferenceTableRow({ event, rowId, isSelected, style, onSelect }:
       <span className="inference-table__cell inference-table__cell--rate"><TokenRateBadge perSec={perSec} /></span>
       <span className="inference-table__cell inference-table__cell--latency"><LatencyPill latencyMS={latencyMS} /></span>
       <span className="inference-table__cell inference-table__cell--time">{formatClockTime(event.at)}</span>
+      <span className="inference-table__cell inference-table__cell--waterfall">
+        <WaterfallBar loadMS={loadMS} evalMS={evalMS} totalMS={latencyMS} maxMS={maxLatencyMS} />
+      </span>
     </button>
   );
 }

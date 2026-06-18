@@ -14,6 +14,9 @@ export const INFERENCE_DETAIL_STATUS_LABELS: Readonly<Record<number, string>> = 
 /** Sentinel for unavailable metric fields. */
 export const UNAVAILABLE_LABEL = '—';
 
+/** How long the code-block "Copied" confirmation stays visible after a copy (ms). */
+export const COPIED_RESET_MS = 1500;
+
 /**
  * NOT_CAPTURED_LABEL is shown in body/headers tabs when passive capture has not
  * surfaced the data. TECH DEBT (Slice A backend): the capture pipeline parses
@@ -29,6 +32,7 @@ export const INFERENCE_DETAIL_TABS: readonly { readonly key: InferenceDetailTabK
   { key: 'overview', label: 'Overview' },
   { key: 'payload', label: 'Payload' },
   { key: 'response', label: 'Response' },
+  { key: 'generation', label: 'Generation' },
   { key: 'headers', label: 'Headers' },
   { key: 'timing', label: 'Timing' },
 ] as const;

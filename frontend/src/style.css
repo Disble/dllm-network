@@ -559,7 +559,7 @@ body {
 .inference-table__head,
 .inference-table__row {
   display: grid;
-  grid-template-columns: 1.3fr 1.5fr 0.85fr 1.05fr 0.7fr 0.95fr 1fr 0.85fr;
+  grid-template-columns: 1.3fr 1.4fr 0.8fr 1fr 0.65fr 0.9fr 0.95fr 0.8fr 2.2fr;
   align-items: center;
   gap: 10px;
   padding: 0 14px;
@@ -626,6 +626,44 @@ body {
   font-variant-numeric: tabular-nums;
   color: var(--text-subtle);
   font-size: 0.78rem;
+}
+.inference-table__cell--waterfall {
+  overflow: visible;
+}
+
+/* ---- Table waterfall bar (per-row, scaled to the slowest request) ---- */
+.waterfall-bar {
+  display: block;
+  width: 100%;
+}
+.waterfall-bar--unavailable {
+  color: var(--text-subtle);
+}
+.waterfall-bar__track {
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--track);
+  overflow: hidden;
+}
+.waterfall-bar__fill {
+  display: flex;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.waterfall-bar__segment {
+  height: 100%;
+}
+.waterfall-bar__segment--load {
+  background: var(--charcoal);
+}
+.waterfall-bar__segment--eval {
+  background: var(--text-muted);
+}
+.waterfall-bar__segment--other {
+  background: var(--border-strong);
 }
 .inference-table__empty {
   padding: 40px 16px;
@@ -724,6 +762,107 @@ body {
   margin: 8px 0 0;
   color: var(--warn);
   font-size: 0.76rem;
+}
+
+/* ---- Code block toolbar (Pretty/Raw toggle + Copy) ---- */
+.inference-detail__code-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+/* When only Copy is present (no toggle), keep it right-aligned. */
+.inference-detail__code-toolbar:has(.inference-detail__copy:only-child) {
+  justify-content: flex-end;
+}
+.inference-detail__copy {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 12px;
+  background: var(--surface-2);
+  color: var(--text-subtle);
+  font: inherit;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.inference-detail__copy:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* ---- Body view toggle (Pretty / Raw segmented control) ---- */
+.inference-detail__view-toggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.inference-detail__view-option {
+  appearance: none;
+  border: none;
+  border-radius: 999px;
+  padding: 4px 14px;
+  background: transparent;
+  color: var(--text-subtle);
+  font: inherit;
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.inference-detail__view-option:hover {
+  color: var(--text);
+}
+.inference-detail__view-option--active {
+  background: var(--row-selected);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+}
+
+/* ---- Generation tab (LLM-aware response view) ---- */
+.inference-detail__generation-label {
+  margin: 0 0 8px;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+.inference-detail__context-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.inference-detail__context-toggle:hover {
+  background: var(--row-hover);
+  border-color: var(--border-strong);
+}
+.inference-detail__context-chevron {
+  display: block;
+  flex: none;
+  color: var(--text-subtle);
+  transition: transform 150ms ease;
+}
+.inference-detail__context-chevron--open {
+  transform: rotate(180deg);
+}
+.inference-detail__context-preview {
+  margin-top: 12px;
 }
 .inference-detail__header-group + .inference-detail__header-group {
   margin-top: 16px;

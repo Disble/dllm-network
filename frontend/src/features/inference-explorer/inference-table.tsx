@@ -26,8 +26,14 @@ export function InferenceTable({ rows, selectedId, onSelect }: Readonly<Inferenc
     overscan: INFERENCE_TABLE_OVERSCAN,
   });
 
+  // The virtualizer absolutely-positions each row as a <button> inside the
+  // scroll area. Native <table>/<tbody>/<tr> elements cannot host absolutely
+  // positioned children without breaking both layout and virtualization, so we
+  // keep the explicit ARIA table roles on the equivalent div containers.
   return (
+    // eslint-disable-next-line react-doctor/prefer-tag-over-role
     <div className="inference-table" role="table" aria-label="Captured inference requests">
+      {/* eslint-disable-next-line react-doctor/prefer-tag-over-role -- virtualized table header rendered as a div row; see explanatory comment above. */}
       <div className="inference-table__head" role="row">
         <span className="inference-table__cell inference-table__cell--model">Model</span>
         <span className="inference-table__cell inference-table__cell--endpoint">Endpoint</span>
@@ -40,6 +46,7 @@ export function InferenceTable({ rows, selectedId, onSelect }: Readonly<Inferenc
         <span className="inference-table__cell inference-table__cell--waterfall">Waterfall</span>
       </div>
 
+      {/* eslint-disable-next-line react-doctor/prefer-tag-over-role -- virtualized scroll body rendered as a div rowgroup; see explanatory comment above. */}
       <div ref={scrollRef} className="inference-table__scroll" role="rowgroup">
         {rows.length === 0 ? (
           <p className="inference-table__empty">No inference requests captured yet.</p>

@@ -24,8 +24,10 @@ describe('DashboardScreen', () => {
     expect(telemetryPanel).not.toBeNull();
     expect(secondaryWorkspace.contains(telemetryPanel)).toBe(true);
     expect(secondaryWorkspace.contains(screen.getByLabelText('Running models'))).toBe(true);
-    expect(workbench.compareDocumentPosition(telemetryPanel!) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
+    // Node.DOCUMENT_POSITION_FOLLOWING (=4): telemetry appears AFTER the workbench.
+    const documentPositionFollowing = 4;
+    expect(workbench.compareDocumentPosition(telemetryPanel!) & documentPositionFollowing).toBe(
+      documentPositionFollowing,
     );
   });
 

@@ -4,7 +4,7 @@ description: "Trigger: styling, CSS, theme, colors, design tokens, charts, or ne
 license: Apache-2.0
 metadata:
   author: gentleman-programming
-  version: "1.0"
+  version: "1.1"
 ---
 
 ## Activation Contract
@@ -13,6 +13,7 @@ Apply when writing, restyling, or reviewing any frontend UI in `ollama-telemetry
 
 ## Hard Rules
 
+- This skill is LIVING. Any new discovery, new pattern, changed guideline, or imprecise/missing detail you hit MUST be written back into this file in the SAME change — and bump `metadata.version`. An out-of-date skill is a bug.
 - The theme lives in `frontend/src/style.css` `:root` as CSS custom properties. Change the theme THERE only; components consume tokens via `var(--token)`. NEVER hardcode a hex/rgb color in a component or rule.
 - Palette is monochrome near-black (Coolors), hue-less. Status colors are muted and low-saturation — never bright.
 - Charts are hand-rolled SVG / flex `<div>` segments. NO chart library. Reuse the atoms below; new microcharts follow the same pattern.

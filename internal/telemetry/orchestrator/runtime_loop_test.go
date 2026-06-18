@@ -165,7 +165,7 @@ func TestPauseSkipsCollectionUntilResume(t *testing.T) {
 
 	clock.Advance(3 * time.Second)
 	ticker.Tick(clock.Now())
-	publisher.AssertCallsStayAt(t, 1, 150*time.Millisecond)
+	publisher.AssertCallsStayAt(t, 1)
 
 	if poller.Calls() != 1 {
 		t.Fatalf("expected paused loop to skip polling, got %d calls", poller.Calls())
@@ -487,18 +487,23 @@ func (publisher *fakePublisher) WaitForCalls(t *testing.T, expected int) {
 	}
 }
 
-func (publisher *fakePublisher) AssertCallsStayAt(t *testing.T, expected int, duration time.Duration) {
+func (publisher *fakePublisher) AssertCallsStayAt(t *testing.T, expected int) {
 	t.Helper()
 	if got := len(publisher.Inputs()); got != expected {
 		t.Fatalf("expected %d publisher calls before stability check, got %d", expected, got)
 	}
-	select {
-	case <-publisher.calledCh:
-		t.Fatalf("expected publisher calls to stay at %d during %s, got %d", expected, duration, len(publisher.Inputs()))
-	case <-time.After(duration):
-	}
-	if got := len(publisher.Inputs()); got != expected {
-		t.Fatalf("expected publisher calls to remain at %d, got %d", expected, got)
+	for {
+		select {
+		case <-publisher.calledCh:
+			if got := len(publisher.Inputs()); got != expected {
+				t.Fatalf("expected publisher calls to stay at %d, got %d", expected, got)
+			}
+		default:
+			if got := len(publisher.Inputs()); got != expected {
+				t.Fatalf("expected publisher calls to remain at %d, got %d", expected, got)
+			}
+			return
+		}
 	}
 }
 

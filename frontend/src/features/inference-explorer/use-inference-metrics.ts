@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import type { DashboardSnapshotSource } from '../../infrastructure/dashboard-snapshot-source';
 import { formatClockDateTime } from '../../shared/helpers/formatters.helpers';
 import { connectInferenceStore, useInferenceStore } from '../../shared/store/inference-store';
-import { computeAggregates } from '../../shared/store/inference-store.helpers';
+import { selectFilteredInferenceView } from '../../shared/store/inference-store.helpers';
 import type { UseInferenceMetricsResult } from './inference-explorer.types';
 
 /**
@@ -13,8 +13,10 @@ import type { UseInferenceMetricsResult } from './inference-explorer.types';
  */
 export function useInferenceMetrics(source?: DashboardSnapshotSource): UseInferenceMetricsResult {
   const events = useInferenceStore((state) => state.events);
+  const query = useInferenceStore((state) => state.query);
+  const statusFilter = useInferenceStore((state) => state.statusFilter);
 
-  const aggregates = computeAggregates(events);
+  const { aggregates } = selectFilteredInferenceView(events, query, statusFilter);
   const items = [
     { label: 'Requests', value: String(aggregates.count), caption: 'Total' },
     {

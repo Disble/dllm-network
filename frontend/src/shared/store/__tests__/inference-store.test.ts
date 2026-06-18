@@ -14,6 +14,7 @@ import {
   selectCaptureUnavailable,
   selectEventById,
   selectFilteredEvents,
+  selectFilteredInferenceView,
 } from '../inference-store.helpers';
 import {
   connectInferenceStore,
@@ -120,6 +121,95 @@ describe('selectFilteredEvents', () => {
 
   it('filters by lifecycle phase', () => {
     expect(selectFilteredEvents(events, '', PHASE_IN_PROGRESS)).toHaveLength(1);
+  });
+});
+
+describe('selectFilteredInferenceView', () => {
+  const tokens = (evalCount: number, perSec: number, latencyMS: number) => ({
+    promptEvalCount: 0,
+    evalCount,
+    evalDuration: 0,
+    totalDuration: 0,
+    loadDuration: 0,
+    perSec,
+    latencyMS,
+  });
+
+  const events = [
+    makeEvent({
+      id: 'alpha-completed',
+      at: '2026-06-18T01:00:00Z',
+      model: 'alpha',
+      endpoint: '/api/generate',
+      status: PHASE_COMPLETED,
+      tokens: tokens(10, 20, 1000),
+    }),
+    makeEvent({
+      id: 'alpha-progress',
+      at: '2026-06-18T02:00:00Z',
+      model: 'alpha',
+      endpoint: '/api/chat',
+      status: PHASE_IN_PROGRESS,
+      tokens: null,
+    }),
+    makeEvent({
+      id: 'beta-completed',
+      at: '2026-06-18T03:00:00Z',
+      model: 'beta',
+      endpoint: '/api/generate',
+      status: PHASE_COMPLETED,
+      tokens: tokens(40, 80, 4000),
+    }),
+  ];
+
+  it.each([
+    {
+      name: 'applies query and status filters before computing aggregates',
+      query: 'alpha',
+      statusFilter: PHASE_COMPLETED,
+      expectedIds: ['alpha-completed'],
+      expectedAggregates: {
+        count: 1,
+        avgPerSec: 20,
+        p50LatencyMS: 1000,
+        p95LatencyMS: 1000,
+        totalEvalCount: 10,
+        lastUpdated: '2026-06-18T01:00:00Z',
+      },
+    },
+    {
+      name: 'uses the newest timestamp inside the filtered subset',
+      query: 'alpha',
+      statusFilter: 'all',
+      expectedIds: ['alpha-completed', 'alpha-progress'],
+      expectedAggregates: {
+        count: 2,
+        avgPerSec: 20,
+        p50LatencyMS: 1000,
+        p95LatencyMS: 1000,
+        totalEvalCount: 10,
+        lastUpdated: '2026-06-18T02:00:00Z',
+      },
+    },
+    {
+      name: 'returns empty-subset aggregates when filters match nothing',
+      query: 'missing',
+      statusFilter: 'all',
+      expectedIds: [],
+      expectedAggregates: {
+        count: 0,
+        avgPerSec: null,
+        p50LatencyMS: null,
+        p95LatencyMS: null,
+        totalEvalCount: 0,
+        lastUpdated: '',
+      },
+    },
+  ])('$name', ({ query, statusFilter, expectedIds, expectedAggregates }) => {
+    const view = selectFilteredInferenceView(events, query, statusFilter);
+
+    expect(view.rows.map((event) => event.id)).toEqual(expectedIds);
+    expect(view.aggregates).toEqual(expectedAggregates);
   });
 });
 

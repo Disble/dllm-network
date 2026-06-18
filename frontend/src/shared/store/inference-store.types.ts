@@ -27,6 +27,17 @@ export interface InferenceAggregates {
 }
 
 /**
+ * FilteredInferenceView keeps filtered rows and their aggregate summary on one
+ * shared derivation path so table and KPI surfaces stay synchronized.
+ */
+export interface FilteredInferenceView {
+  /** Rows that matched the active query + status filter. */
+  readonly rows: readonly InferenceEvent[];
+  /** Summary metrics derived from the filtered rows. */
+  readonly aggregates: InferenceAggregates;
+}
+
+/**
  * InferenceStoreState is the full Zustand store shape: accumulated read-model
  * state plus the actions that mutate it. The store is fed by a single bridge
  * subscription to the snapshot source (see connectInferenceStore).

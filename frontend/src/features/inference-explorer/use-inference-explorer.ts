@@ -3,9 +3,8 @@ import { useEffect } from 'react';
 import type { DashboardSnapshotSource } from '../../infrastructure/dashboard-snapshot-source';
 import { connectInferenceStore, useInferenceStore } from '../../shared/store/inference-store';
 import {
-  computeAggregates,
   selectCaptureUnavailable,
-  selectFilteredEvents,
+  selectFilteredInferenceView,
 } from '../../shared/store/inference-store.helpers';
 import { DEFAULT_CAPTURE_NOTE } from './inference-explorer.constants';
 import type { UseInferenceExplorerResult } from './inference-explorer.types';
@@ -26,8 +25,7 @@ export function useInferenceExplorer(source?: DashboardSnapshotSource): UseInfer
   const captureMode = useInferenceStore((state) => state.captureMode);
   const passiveNotes = useInferenceStore((state) => state.passiveNotes);
 
-  const rows = selectFilteredEvents(events, query, statusFilter);
-  const aggregates = computeAggregates(rows);
+  const { rows, aggregates } = selectFilteredInferenceView(events, query, statusFilter);
   const captureUnavailable = selectCaptureUnavailable(events, captureMode);
   const captureNote = passiveNotes[passiveNotes.length - 1] ?? DEFAULT_CAPTURE_NOTE;
 

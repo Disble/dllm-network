@@ -1,5 +1,9 @@
 import type { DashboardSnapshot, InferenceEvent } from '../contracts/dashboard-snapshot.types';
-import type { InferenceAggregates, InferenceStatusFilter } from './inference-store.types';
+import type {
+  FilteredInferenceView,
+  InferenceAggregates,
+  InferenceStatusFilter,
+} from './inference-store.types';
 
 /**
  * deriveEventId returns the stable identity used for selection + dedup (R2).
@@ -95,6 +99,23 @@ export function selectFilteredEvents(
   return events.filter(
     (event) => matchesQuery(event, query) && matchesStatusFilter(event, statusFilter),
   );
+}
+
+/**
+ * selectFilteredInferenceView applies the active filters once, then derives the
+ * aggregate summary from the exact same filtered subset.
+ */
+export function selectFilteredInferenceView(
+  events: readonly InferenceEvent[],
+  query: string,
+  statusFilter: InferenceStatusFilter,
+): FilteredInferenceView {
+  const rows = selectFilteredEvents(events, query, statusFilter);
+
+  return {
+    rows,
+    aggregates: computeAggregates(rows),
+  };
 }
 
 /**

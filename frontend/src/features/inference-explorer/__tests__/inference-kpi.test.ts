@@ -4,14 +4,17 @@
  * last-updated timestamp from the shared store.
  */
 import { createElement } from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { EMPTY_DASHBOARD_SNAPSHOT } from '../../../shared/contracts/dashboard-snapshot.constants';
 import type { DashboardSnapshot, InferenceEvent } from '../../../shared/contracts/dashboard-snapshot.types';
-import { PHASE_COMPLETED } from '../../../shared/contracts/dashboard-snapshot.types';
+import {
+  PHASE_COMPLETED,
+  PHASE_IN_PROGRESS,
+} from '../../../shared/contracts/dashboard-snapshot.types';
 import type { DashboardSnapshotSource } from '../../../infrastructure/dashboard-snapshot-source';
-import { resetInferenceStore } from '../../../shared/store/inference-store';
+import { resetInferenceStore, useInferenceStore } from '../../../shared/store/inference-store';
 import { InferenceKpiContainer } from '../inference-kpi-container';
 
 beforeEach(() => {
@@ -51,6 +54,30 @@ const completedEvent: InferenceEvent = {
   },
 };
 
+const secondCompletedEvent: InferenceEvent = {
+  ...completedEvent,
+  id: 'second-completed',
+  at: '2026-06-18T14:25:02Z',
+  endpoint: '/api/chat',
+  model: 'llama3',
+  tokens: {
+    ...completedEvent.tokens!,
+    evalCount: 50,
+    perSec: 30,
+    latencyMS: 4000,
+  },
+};
+
+const inProgressEvent: InferenceEvent = {
+  ...completedEvent,
+  id: 'third-progress',
+  at: '2026-06-18T14:27:02Z',
+  endpoint: '/api/generate',
+  model: 'llama3',
+  status: PHASE_IN_PROGRESS,
+  tokens: null,
+};
+
 describe('InferenceKpiContainer', () => {
   it('renders all six KPI labels', () => {
     render(createElement(InferenceKpiContainer, { source: makeSource(EMPTY_DASHBOARD_SNAPSHOT) }));
@@ -73,5 +100,42 @@ describe('InferenceKpiContainer', () => {
     render(createElement(InferenceKpiContainer, { source: makeSource(snapshot) }));
     expect(screen.getByText('45.0 tok/s')).toBeTruthy();
     expect(screen.getByText('169')).toBeTruthy(); // eval count total
+  });
+
+  it('tracks active query and status filters from the request table store', () => {
+    const snapshot: DashboardSnapshot = {
+      ...EMPTY_DASHBOARD_SNAPSHOT,
+      inference: {
+        current: EMPTY_DASHBOARD_SNAPSHOT.inference.current,
+        recent: [completedEvent, secondCompletedEvent, inProgressEvent],
+      },
+    };
+
+    render(createElement(InferenceKpiContainer, { source: makeSource(snapshot) }));
+
+    expect(screen.getByText('3')).toBeTruthy();
+    expect(screen.getByText('37.5 tok/s')).toBeTruthy();
+    expect(screen.getByText('219')).toBeTruthy();
+    expect(screen.getByText('2026-06-18 14:27:02Z')).toBeTruthy();
+
+    act(() => {
+      useInferenceStore.getState().setQuery('llama3');
+      useInferenceStore.getState().setStatusFilter(PHASE_COMPLETED);
+    });
+
+    expect(screen.getByText('1')).toBeTruthy();
+    expect(screen.getByText('30.0 tok/s')).toBeTruthy();
+    expect(screen.getByText('50')).toBeTruthy();
+    expect(screen.getByText('2026-06-18 14:25:02Z')).toBeTruthy();
+
+    act(() => {
+      useInferenceStore.getState().setQuery('');
+      useInferenceStore.getState().setStatusFilter('all');
+    });
+
+    expect(screen.getByText('3')).toBeTruthy();
+    expect(screen.getByText('37.5 tok/s')).toBeTruthy();
+    expect(screen.getByText('219')).toBeTruthy();
+    expect(screen.getByText('2026-06-18 14:27:02Z')).toBeTruthy();
   });
 });

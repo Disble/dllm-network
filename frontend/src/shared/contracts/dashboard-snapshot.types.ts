@@ -71,17 +71,14 @@ export interface InferenceEvent {
 
   // ---------------------------------------------------------------------------
   // DevTools-Network detail fields (R2/R3). Additive + OPTIONAL for back-compat.
-  // TECH DEBT (Slice A backend): the capture pipeline already parses these at
-  // the wire (internal/capture/httpx) but the extractor discards them. Until
-  // Slice A plumbs them through inference.Inference -> projector -> snapshot,
-  // these arrive `undefined` and the UI MUST render an honest "not captured"
-  // state (null != zero invariant). Do NOT fabricate placeholder values.
+  // The backend emits these when capture is active; otherwise they may be
+  // undefined and the UI renders an honest "not captured" state.
   // ---------------------------------------------------------------------------
 
   /**
    * Stable identity for master-detail selection (R2). Mirrors json:"id".
-   * TECH DEBT: until backend emits it, the store derives a fallback id from
-   * `${at}::${endpoint}::${model}` — see shared/store/inference-store.helpers.
+   * The backend emits this for captured events; the store falls back to a
+   * composite key when it is absent.
    */
   readonly id?: string;
   /** HTTP response status code. 0/undefined = unknown. Mirrors json:"statusCode". */

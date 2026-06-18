@@ -18,10 +18,8 @@ export const UNAVAILABLE_LABEL = '—';
 export const COPIED_RESET_MS = 1500;
 
 /**
- * NOT_CAPTURED_LABEL is shown in body/headers tabs when passive capture has not
- * surfaced the data. TECH DEBT (Slice A backend): the capture pipeline parses
- * bodies + headers at the wire but the extractor currently discards them, so
- * these tabs stay empty until that plumbing lands. "not captured" != empty.
+ * NOT_CAPTURED_LABEL is shown in body/headers tabs when capture has not
+ * surfaced the data. "not captured" != empty.
  */
 export const NOT_CAPTURED_LABEL = 'Not captured in passive mode yet.';
 

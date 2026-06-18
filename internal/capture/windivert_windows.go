@@ -230,7 +230,9 @@ func (w *windivertSource) Close() error {
 	}
 
 	if w.handle != windivertInvalidHandle {
-		w.close.Call(w.handle) //nolint:errcheck
+		if _, _, err := w.close.Call(w.handle); err != nil {
+			return fmt.Errorf("WinDivertClose failed: %w", err)
+		}
 		w.handle = windivertInvalidHandle
 	}
 

@@ -8,6 +8,8 @@ import (
 
 var supportedInferenceFilters = []string{"model", "endpoint", "status", "since", "until"}
 
+const defaultInferenceContextBodyLimit = 4096
+
 // SupportedInferenceFilters returns the declared filter universe for the
 // staged MCP discovery/search flow.
 func SupportedInferenceFilters() []string {
@@ -64,11 +66,97 @@ type SearchInferencesResult struct {
 	NextCursor string             `json:"nextCursor,omitempty"`
 }
 
-// GetInferenceContextQuery and GetInferenceContextResult reserve the read-side
-// contract that PR2 will deepen. PR1 only needs the method shape so the exact
-// three-tool MCP surface can compile.
-type GetInferenceContextQuery struct {
-	ID string
+type InferenceContextSection string
+
+const (
+	InferenceContextSectionMetadata        InferenceContextSection = "metadata"
+	InferenceContextSectionTokens          InferenceContextSection = "tokens"
+	InferenceContextSectionRequestHeaders  InferenceContextSection = "request_headers"
+	InferenceContextSectionResponseHeaders InferenceContextSection = "response_headers"
+)
+
+func SupportedInferenceContextSections() []InferenceContextSection {
+	return []InferenceContextSection{
+		InferenceContextSectionMetadata,
+		InferenceContextSectionTokens,
+		InferenceContextSectionRequestHeaders,
+		InferenceContextSectionResponseHeaders,
+	}
 }
 
-type GetInferenceContextResult struct{}
+type InferenceContextBodyName string
+
+const (
+	InferenceContextBodyRequestBody  InferenceContextBodyName = "request_body"
+	InferenceContextBodyResponseBody InferenceContextBodyName = "response_body"
+)
+
+func SupportedInferenceContextBodies() []InferenceContextBodyName {
+	return []InferenceContextBodyName{
+		InferenceContextBodyRequestBody,
+		InferenceContextBodyResponseBody,
+	}
+}
+
+type InferenceContextBodyRequest struct {
+	Name   InferenceContextBodyName
+	Offset int
+	Limit  int
+}
+
+func (r InferenceContextBodyRequest) Normalized() InferenceContextBodyRequest {
+	if r.Offset < 0 {
+		r.Offset = 0
+	}
+	if r.Limit <= 0 {
+		r.Limit = defaultInferenceContextBodyLimit
+	}
+	return r
+}
+
+type InferenceContextAvailability struct {
+	Metadata        bool `json:"metadata"`
+	Tokens          bool `json:"tokens"`
+	RequestHeaders  bool `json:"requestHeaders"`
+	ResponseHeaders bool `json:"responseHeaders"`
+	RequestBody     bool `json:"requestBody"`
+	ResponseBody    bool `json:"responseBody"`
+}
+
+type InferenceContextMetadata struct {
+	ID         string    `json:"id"`
+	At         time.Time `json:"at"`
+	Model      string    `json:"model"`
+	Endpoint   string    `json:"endpoint"`
+	Method     string    `json:"method"`
+	Status     string    `json:"status"`
+	StatusCode int       `json:"statusCode"`
+	Streaming  bool      `json:"streaming"`
+	PromptSize int       `json:"promptSize"`
+}
+
+type InferenceContextBodyChunk struct {
+	Name       InferenceContextBodyName `json:"name"`
+	Offset     int                      `json:"offset"`
+	Limit      int                      `json:"limit"`
+	NextOffset int                      `json:"nextOffset"`
+	HasMore    bool                     `json:"hasMore"`
+	TotalBytes int                      `json:"totalBytes"`
+	Content    string                   `json:"content"`
+	Truncated  bool                     `json:"truncated"`
+}
+
+type GetInferenceContextQuery struct {
+	ID       string
+	Sections []InferenceContextSection
+	Body     *InferenceContextBodyRequest
+}
+
+type GetInferenceContextResult struct {
+	AvailableSections InferenceContextAvailability `json:"availableSections"`
+	Metadata          *InferenceContextMetadata    `json:"metadata,omitempty"`
+	Tokens            *inference.TokenStats        `json:"tokens,omitempty"`
+	RequestHeaders    []inference.Header           `json:"requestHeaders,omitempty"`
+	ResponseHeaders   []inference.Header           `json:"responseHeaders,omitempty"`
+	BodyChunk         *InferenceContextBodyChunk   `json:"bodyChunk,omitempty"`
+}

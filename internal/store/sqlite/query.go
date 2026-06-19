@@ -143,14 +143,6 @@ func (s *Store) SearchInferences(ctx context.Context, query store.SearchInferenc
 	return result, nil
 }
 
-func (s *Store) GetInferenceContext(ctx context.Context, query store.GetInferenceContextQuery) (store.GetInferenceContextResult, bool, error) {
-	_, ok, err := s.Get(ctx, query.ID)
-	if err != nil || !ok {
-		return store.GetInferenceContextResult{}, ok, err
-	}
-	return store.GetInferenceContextResult{}, true, nil
-}
-
 func (s *Store) resolveCounts(ctx context.Context) (store.InferenceCounts, error) {
 	var total int
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM inferences`).Scan(&total); err != nil {

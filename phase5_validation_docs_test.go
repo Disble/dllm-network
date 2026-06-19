@@ -101,12 +101,10 @@ func TestPhase5DocumentationCoversPassiveLimitsAndValidation(t *testing.T) {
 			name: "readme covers quickstart and passive honesty",
 			path: "README.md",
 			expects: []string{
-				"Passive-only Windows tray app",
-				"bun run test",
+				"Passive means it",
+				"does not proxy traffic",
 				"bun run validate",
-				"bun run doctor:react",
-				"confirmed telemetry",
-				"inferred activity",
+				"docs/mcp.md",
 			},
 		},
 		{

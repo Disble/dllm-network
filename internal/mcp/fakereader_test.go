@@ -84,6 +84,13 @@ func (f *fakeReader) Models(_ context.Context) ([]string, error) {
 
 func (f *fakeReader) GetInferenceContext(_ context.Context, query store.GetInferenceContextQuery) (store.GetInferenceContextResult, bool, error) {
 	f.lastContextQuery = query
+	if query.Body != nil {
+		body := *query.Body
+		f.lastContextQuery.Body = &body
+	}
+	if len(query.Sections) > 0 {
+		f.lastContextQuery.Sections = append([]store.InferenceContextSection(nil), query.Sections...)
+	}
 	f.getContextCalls++
 	return f.getContextResult, f.getContextOK, f.getContextErr
 }

@@ -6,8 +6,9 @@
     "test:go": "bun run scripts/go-test-project.mjs",
     "test": "bun run test:go && bun run scripts/frontend-run.mjs test",
     "lint": "bun run scripts/frontend-run.mjs lint",
+    "lint:go": "bun run scripts/go-lint-project.mjs",
     "typecheck": "bun run scripts/frontend-run.mjs typecheck",
     "doctor:react": "bun run scripts/frontend-run.mjs doctor:react",
-    "validate": "bun run test:go && bun run scripts/frontend-run.mjs lint && bun run scripts/frontend-run.mjs typecheck && bun run scripts/frontend-run.mjs test && bun run scripts/frontend-run.mjs doctor:react"
+    "validate": "bun run test:go && bun run lint:go && bun run scripts/frontend-run.mjs lint && bun run scripts/frontend-run.mjs typecheck && bun run scripts/frontend-run.mjs test && bun run scripts/frontend-run.mjs doctor:react"
   }
 }

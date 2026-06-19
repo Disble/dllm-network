@@ -57,21 +57,31 @@ type InferenceWriter interface {
 // in-memory Recent ring, which stays a separate, uncoupled projection — see
 // design D5's rationale.
 type InferenceReader interface {
-	// Query lists inferences matching filter, most-recent-first, capped at
-	// filter.Limit (when > 0). Returns an empty, non-nil slice (not an
-	// error) when nothing matches.
+	// ResolveInferenceContext returns lightweight discovery data for the stored
+	// inference universe, without bodies or per-event detail.
+	ResolveInferenceContext(ctx context.Context) (ResolveInferenceContextResult, error)
+
+	// SearchInferences returns lightweight summaries ordered newest-first using
+	// a stable total ordering and an opaque cursor.
+	SearchInferences(ctx context.Context, query SearchInferencesQuery) (SearchInferencesResult, error)
+
+	// GetInferenceContext returns one selected inference's bounded context for
+	// the staged MCP detail flow.
+	GetInferenceContext(ctx context.Context, query GetInferenceContextQuery) (GetInferenceContextResult, bool, error)
+
+	// Query lists full inference records for non-MCP consumers that still need
+	// the legacy durable-read contract.
 	Query(ctx context.Context, filter Filter) ([]inference.Inference, error)
 
-	// Get fetches one full record by id, including bodies and headers.
-	// Returns ok=false (no error) when id is unknown.
+	// Get fetches one full record by id for non-MCP consumers such as the GUI
+	// detail binding. Returns ok=false (no error) when id is unknown.
 	Get(ctx context.Context, id string) (inference.Inference, bool, error)
 
-	// Stats computes aggregate tokens/sec and latency percentiles plus
-	// per-model counts over the rows matching filter.
+	// Stats computes aggregate metrics for non-MCP readers that still need the
+	// legacy aggregate contract.
 	Stats(ctx context.Context, filter Filter) (Stats, error)
 
-	// Models lists the distinct model names observed in stored inferences,
-	// in no particular guaranteed order beyond what the implementation
-	// documents.
+	// Models lists the distinct model names for non-MCP readers that still need
+	// the legacy model index contract.
 	Models(ctx context.Context) ([]string, error)
 }

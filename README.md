@@ -21,10 +21,9 @@ Ollama exactly as before.
   endpoint, status code, streaming flag, prompt/response bodies, and headers.
 - **Real performance metrics** — token counts, tokens/sec, and latency derived
   from captured responses (not estimated).
-- **MCP server** — query your telemetry from an LLM via tools
-  (`query_inferences`, `get_inference`, `get_stats`, `list_models`) and
-  resources (`inference://recent`, `inference://{id}`). See
-  [`docs/mcp.md`](docs/mcp.md).
+- **MCP server** — query your telemetry from an LLM through a compact
+  Context7-style flow: `resolve_inference_context`, `search_inferences`, and
+  `get_inference_context`. See [`docs/mcp.md`](docs/mcp.md).
 - **Session-scoped by design** — like DevTools' Network tab, data is a working
   view of the current session, not a permanent archive.
 - **Honest about limits** — when run without elevation it degrades to passive
@@ -76,14 +75,14 @@ path — for example, Claude Desktop's `claude_desktop_config.json`:
 ```
 
 The GUI app must have run at least once (the sidecar reads its database
-read-only and never creates it). Tools, resources, example prompts, and
-troubleshooting: **[`docs/mcp.md`](docs/mcp.md)**.
+read-only and never creates it). Tools, example prompts, and troubleshooting:
+**[`docs/mcp.md`](docs/mcp.md)**.
 
 ## Documentation
 
 | Doc | What's in it |
 |-----|--------------|
-| [`docs/mcp.md`](docs/mcp.md) | Build, register, and use the MCP server; tool/resource reference; troubleshooting. |
+| [`docs/mcp.md`](docs/mcp.md) | Build, register, and use the MCP server; 3-tool reference; troubleshooting. |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How capture, persistence, the read ports, and the MCP core fit together; the enforced architecture boundaries. |
 | [`docs/development.md`](docs/development.md) | Local validation commands (`bun run validate`, tests, lint, typecheck) and conventions. |
 | [`docs/passive-telemetry.md`](docs/passive-telemetry.md) | Confirmed-versus-inferred semantics of the passive polling layer and its limitations. |
@@ -111,7 +110,7 @@ internal/telemetry     Domain types (driver-free inference model), polling
 internal/store         InferenceReader/InferenceWriter ports
 internal/store/sqlite  Durable WAL SQLite store (the cross-process seam)
 internal/persistence   Async bus subscriber → batched, bounded writes
-internal/mcp           MCP server core: tools + resources (SDK quarantined here)
+internal/mcp           MCP server core: 3-tool MCP contract (SDK quarantined here)
 internal/app           Wails app lifecycle, dashboard wiring
 cmd/ollama-telemetry-mcp   stdio MCP sidecar binary
 frontend               React + Vite dashboard

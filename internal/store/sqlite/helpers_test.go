@@ -1,10 +1,56 @@
 package sqlite
 
 import (
+	"context"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"ollama-telemetry/internal/telemetry/inference"
 )
+
+// openSeededStore opens a fresh temp-dir Store and saves seed, returning the
+// store for read-side tests. Shared across sqlite test files to keep seeding
+// boilerplate in one place.
+func openSeededStore(t *testing.T, seed []inference.Inference) *Store {
+	t.Helper()
+
+	dbPath := filepath.Join(t.TempDir(), "telemetry.db")
+	st, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+
+	if len(seed) > 0 {
+		if err := st.Save(context.Background(), seed); err != nil {
+			t.Fatalf("Save seed: %v", err)
+		}
+	}
+	return st
+}
+
+// fixtureAt builds a minimal completed inference fixture at a requested time.
+func fixtureAt(id string, at time.Time, model, endpoint string, perSec, latencyMS float64) inference.Inference {
+	return inference.Inference{
+		ID:         id,
+		At:         at,
+		Endpoint:   endpoint,
+		Method:     "POST",
+		Model:      model,
+		PromptSize: 10,
+		Status:     inference.PhaseCompleted,
+		StatusCode: 200,
+		Tokens: &inference.TokenStats{
+			PromptEvalCount: 5,
+			EvalCount:       50,
+			EvalDuration:    time.Duration(latencyMS) * time.Millisecond,
+			TotalDuration:   time.Duration(latencyMS) * time.Millisecond,
+			PerSec:          perSec,
+			LatencyMS:       latencyMS,
+		},
+	}
+}
 
 // assertInferenceEqual compares the fields of two inference.Inference values
 // that matter for the persistence round-trip contract, reporting every

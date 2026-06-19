@@ -34,9 +34,9 @@ capture (WinDivert)            read side
                                               store.InferenceReader
                                                  /              \
                                                 v                v
-                                       dashboard (GUI,    internal/mcp (tools +
-                                       store.Recent ring)  resources) -> stdio
-                                                                sidecar binary
+                                       dashboard (GUI,    internal/mcp (3 staged
+                                       store.Recent ring)  tools, 0 resources)
+                                                                 -> stdio sidecar
 ```
 
 | Stage | Package | Responsibility |
@@ -46,7 +46,7 @@ capture (WinDivert)            read side
 | Async persistence | `internal/persistence` | Subscribes to the bus, non-blocking drop-oldest enqueue, batches into SQLite |
 | Durable store | `internal/store/sqlite` | WAL-mode SQLite, single writer (GUI), read-only reader (sidecar) |
 | Read port | `internal/store` (`InferenceReader`/`InferenceWriter`) | Segregated interfaces; only `sqlite.Store` implements both |
-| MCP core | `internal/mcp` | Tools + resources over `store.InferenceReader`, transport-agnostic |
+| MCP core | `internal/mcp` | Three staged tools over `store.InferenceReader`, transport-agnostic |
 | Sidecar | `cmd/ollama-telemetry-mcp` | Standalone binary: opens the DB read-only, serves MCP over stdio |
 
 ## The WAL seam: one writer, many readers
@@ -130,12 +130,13 @@ loop that publishes events.
 ```go
 type InferenceWriter interface { Save(ctx, []inference.Inference) error }
 type InferenceReader interface {
-    Query(ctx, Filter) ([]inference.Inference, error)
-    Get(ctx, id string) (inference.Inference, bool, error)
-    Stats(ctx, Filter) (Stats, error)
-    Models(ctx) ([]string, error)
+    ResolveInferenceContext(ctx context.Context) (ResolveInferenceContextResult, error)
+    SearchInferences(ctx context.Context, q SearchInferencesQuery) (SearchInferencesResult, error)
+    GetInferenceContext(ctx context.Context, q GetInferenceContextQuery) (GetInferenceContextResult, bool, error)
 }
 ```
+
+The broader durable-read methods (`Query`, `Get`, `Stats`, `Models`) still exist on the concrete store for non-MCP consumers such as the GUI detail binding. The MCP core itself now speaks only the staged three-tool contract.
 
 `store.Recent` (the in-memory 12-item ring used by the live dashboard) does
 **not** implement either interface, and never will.
@@ -157,11 +158,11 @@ or a type.
 
 ## Transport-decoupled MCP core
 
-`internal/mcp` registers tools (`query_inferences`, `get_inference`,
-`get_stats`, `list_models`) and resources (`inference://{id}`,
-`inference://recent`) against an injected `store.InferenceReader` — it never
-imports `sqlite` directly, only the port. The SDK's `mcp.Transport` is the
-seam between the core and how bytes actually move:
+`internal/mcp` registers exactly three tools — `resolve_inference_context`,
+`search_inferences`, and `get_inference_context` — against an injected
+`store.InferenceReader`. It registers zero MCP resources. The package never
+imports `sqlite` directly, only the port. The SDK's `mcp.Transport` is the seam
+between the core and how bytes actually move:
 
 ```go
 func RunStdio(ctx context.Context, srv *mcp.Server, transport mcp.Transport) error
@@ -171,10 +172,33 @@ func Serve(ctx context.Context, srv *mcp.Server) error // production: stdio only
 | Transport | Status | Why |
 |-----------|--------|-----|
 | stdio | Implemented (`Serve`) | What every MCP client (Claude Desktop, etc.) launches today |
-| HTTP | Not implemented — reserved slot | Would add a sibling `ServeHTTP` calling `RunStdio`'s same pattern with a different `mcp.Transport`; touches zero registration code in `server.go`/`tools_*.go`/`resources.go` |
+| HTTP | Not implemented — reserved slot | Would add a sibling `ServeHTTP` following the same transport seam with a different `mcp.Transport`; touches zero staged-tool registration code |
 
 Tests exercise the core via `mcp.NewInMemoryTransports()` — no real stdio,
 no real DB — proving the registration wiring independent of any transport.
+
+## MCP read flow
+
+The staged contract keeps expensive payloads out of the discovery path.
+
+| Step | Tool | Payload shape | Why it stays cheap |
+|------|------|---------------|--------------------|
+| 1 | `resolve_inference_context` | Aggregates and filter universe | No bodies, no per-inference detail |
+| 2 | `search_inferences` | Paginated summaries with stable `id` | Summaries omit heavy headers and bodies |
+| 3 | `get_inference_context` | Requested sections plus optional body chunk | The client asks only for needed sections and byte ranges |
+
+### Stable ids and stable pagination
+
+- `search_inferences` summary ids are the same ids consumed by `get_inference_context`.
+- Page order is `at DESC, id DESC`.
+- The opaque cursor stores both the timestamp and the id, plus the active filters.
+- Reusing a cursor with different filters is rejected because that would break page stability.
+
+### Body chunk contract
+
+`get_inference_context` accepts `body.name`, `body.offset`, and `body.limit`.
+The response returns `bodyChunk.offset`, `bodyChunk.nextOffset`, `bodyChunk.hasMore`, `bodyChunk.totalBytes`, and `bodyChunk.truncated`.
+This lets clients continue reading large bodies incrementally without forcing a full payload into every search result or discovery response.
 
 ## Enforced boundaries
 

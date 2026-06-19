@@ -2,7 +2,6 @@ package sqlite
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,50 +9,119 @@ import (
 	"ollama-telemetry/internal/telemetry/inference"
 )
 
-// openSeededStore opens a fresh temp-dir Store and saves seed, returning the
-// store for read-side tests (slice 3). Extracted so query_test.go and
-// stats_test.go share one seeding helper instead of duplicating Open/Save
-// boilerplate (no-duplication convention).
-func openSeededStore(t *testing.T, seed []inference.Inference) *Store {
-	t.Helper()
+func TestStore_ResolveInferenceContext_EmptyDataset(t *testing.T) {
+	t.Parallel()
 
-	dbPath := filepath.Join(t.TempDir(), "telemetry.db")
-	st, err := Open(dbPath)
+	st := openSeededStore(t, nil)
+
+	got, err := st.ResolveInferenceContext(context.Background())
 	if err != nil {
-		t.Fatalf("Open: %v", err)
+		t.Fatalf("ResolveInferenceContext: %v", err)
 	}
-	t.Cleanup(func() { _ = st.Close() })
-
-	if len(seed) > 0 {
-		if err := st.Save(context.Background(), seed); err != nil {
-			t.Fatalf("Save seed: %v", err)
-		}
+	if got.Counts.Total != 0 {
+		t.Fatalf("Counts.Total: got %d, want 0", got.Counts.Total)
 	}
-	return st
+	if len(got.SupportedFilters) != 5 {
+		t.Fatalf("SupportedFilters: got %d entries, want 5", len(got.SupportedFilters))
+	}
+	if got.TimeRange.Oldest != nil || got.TimeRange.Latest != nil {
+		t.Fatalf("expected nil time bounds for empty dataset, got %+v", got.TimeRange)
+	}
 }
 
-// fixtureAt builds a minimal-but-valid completed inference fixture at a
-// given time offset from a fixed base, varying model/endpoint as requested.
-// Shared across query_test.go and stats_test.go to avoid re-deriving the
-// same boilerplate per test (no-duplication convention).
-func fixtureAt(id string, at time.Time, model, endpoint string, perSec, latencyMS float64) inference.Inference {
-	return inference.Inference{
-		ID:         id,
-		At:         at,
-		Endpoint:   endpoint,
-		Method:     "POST",
-		Model:      model,
-		PromptSize: 10,
-		Status:     inference.PhaseCompleted,
-		StatusCode: 200,
-		Tokens: &inference.TokenStats{
-			PromptEvalCount: 5,
-			EvalCount:       50,
-			EvalDuration:    time.Duration(latencyMS) * time.Millisecond,
-			TotalDuration:   time.Duration(latencyMS) * time.Millisecond,
-			PerSec:          perSec,
-			LatencyMS:       latencyMS,
-		},
+func TestStore_ResolveInferenceContext_AggregatesAvailableUniverse(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, time.June, 19, 10, 0, 0, 0, time.UTC)
+	seed := []inference.Inference{
+		fixtureAt("c", base.Add(3*time.Minute), "llama3", "/api/generate", 120, 60),
+		fixtureAt("b", base.Add(2*time.Minute), "llama3", "/api/chat", 110, 55),
+		fixtureAt("a", base.Add(1*time.Minute), "mistral", "/api/generate", 100, 50),
+	}
+	seed[1].Status = inference.PhaseCancelled
+	st := openSeededStore(t, seed)
+
+	got, err := st.ResolveInferenceContext(context.Background())
+	if err != nil {
+		t.Fatalf("ResolveInferenceContext: %v", err)
+	}
+	if got.Counts.Total != 3 {
+		t.Fatalf("Counts.Total: got %d, want 3", got.Counts.Total)
+	}
+	if len(got.Models) != 2 || got.Models[0].Value != "llama3" || got.Models[0].Count != 2 {
+		t.Fatalf("Models: got %+v", got.Models)
+	}
+	if len(got.Endpoints) != 2 {
+		t.Fatalf("Endpoints: got %+v", got.Endpoints)
+	}
+	if len(got.Statuses) != 2 {
+		t.Fatalf("Statuses: got %+v", got.Statuses)
+	}
+	if got.TimeRange.Oldest == nil || !got.TimeRange.Oldest.Equal(base.Add(1*time.Minute)) {
+		t.Fatalf("Oldest: got %v", got.TimeRange.Oldest)
+	}
+	if got.TimeRange.Latest == nil || !got.TimeRange.Latest.Equal(base.Add(3*time.Minute)) {
+		t.Fatalf("Latest: got %v", got.TimeRange.Latest)
+	}
+}
+
+func TestStore_SearchInferences_StableCursorWithoutDuplicates(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, time.June, 19, 10, 0, 0, 0, time.UTC)
+	seed := []inference.Inference{
+		fixtureAt("inf-a", base, "llama3", "/api/generate", 100, 50),
+		fixtureAt("inf-c", base, "llama3", "/api/generate", 110, 55),
+		fixtureAt("inf-b", base, "llama3", "/api/generate", 120, 60),
+		fixtureAt("older", base.Add(-time.Minute), "llama3", "/api/generate", 90, 45),
+	}
+	st := openSeededStore(t, seed)
+
+	page1, err := st.SearchInferences(context.Background(), store.SearchInferencesQuery{Model: "llama3", Limit: 2})
+	if err != nil {
+		t.Fatalf("SearchInferences page1: %v", err)
+	}
+	if len(page1.Items) != 2 {
+		t.Fatalf("page1 items: got %d, want 2", len(page1.Items))
+	}
+	if page1.Items[0].ID != "inf-c" || page1.Items[1].ID != "inf-b" {
+		t.Fatalf("page1 order: got [%s %s]", page1.Items[0].ID, page1.Items[1].ID)
+	}
+	if page1.NextCursor == "" {
+		t.Fatal("expected next cursor for first page")
+	}
+
+	page2, err := st.SearchInferences(context.Background(), store.SearchInferencesQuery{Model: "llama3", Limit: 2, Cursor: page1.NextCursor})
+	if err != nil {
+		t.Fatalf("SearchInferences page2: %v", err)
+	}
+	if len(page2.Items) != 2 {
+		t.Fatalf("page2 items: got %d, want 2", len(page2.Items))
+	}
+	if page2.Items[0].ID != "inf-a" || page2.Items[1].ID != "older" {
+		t.Fatalf("page2 order: got [%s %s]", page2.Items[0].ID, page2.Items[1].ID)
+	}
+	if page2.NextCursor != "" {
+		t.Fatalf("expected final page to have empty cursor, got %q", page2.NextCursor)
+	}
+}
+
+func TestStore_SearchInferences_NoMatchesReturnsEmptyPage(t *testing.T) {
+	t.Parallel()
+
+	st := openSeededStore(t, []inference.Inference{
+		fixtureAt("only", time.Now().UTC(), "llama3", "/api/generate", 100, 50),
+	})
+
+	got, err := st.SearchInferences(context.Background(), store.SearchInferencesQuery{Model: "missing", Limit: 5})
+	if err != nil {
+		t.Fatalf("SearchInferences: %v", err)
+	}
+	if len(got.Items) != 0 {
+		t.Fatalf("expected empty page, got %d items", len(got.Items))
+	}
+	if got.NextCursor != "" {
+		t.Fatalf("expected empty next cursor, got %q", got.NextCursor)
 	}
 }
 

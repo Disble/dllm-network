@@ -98,44 +98,119 @@ first.
 
 ## 3. What it exposes
 
+The MCP surface is intentionally small:
+
+- **Exactly 3 tools**.
+- **Zero MCP resources**.
+- **Stable inference ids** across all three steps.
+
+### Quick path
+
+1. Call `resolve_inference_context` to learn the searchable universe.
+2. Call `search_inferences` with filters and a page size.
+3. Pick one stable `id` from the summaries and call `get_inference_context` only for the sections or body chunk you actually need.
+
 ### Tools
 
-| Tool | Parameters | Returns |
-|------|------------|---------|
-| `query_inferences` | `model`, `endpoint`, `status` (`in_progress` \| `completed` \| `metadata_only`), `since` (RFC3339), `until` (RFC3339), `limit` (int) — all optional | Matching inferences, most-recent-first. `limit: 0` means no cap. |
-| `get_inference` | `id` (required) | `{ found, inference }` — the full record including request/response bodies and headers. Unknown id returns `found: false` (not an error). |
-| `get_stats` | `model`, `since`, `until` — all optional | Aggregates over the filtered set: count, tokens/sec p50/p95, latency p50/p95 (ms), and per-model counts. |
-| `list_models` | none | Distinct model names observed in stored inferences. |
+| Tool | When to use | Key inputs | Key outputs |
+|------|-------------|------------|-------------|
+| `resolve_inference_context` | First call in a session, or when you need orientation | none | `models`, `endpoints`, `statuses`, `timeRange`, `counts`, `supportedFilters` |
+| `search_inferences` | Find candidate requests without pulling heavy payloads | `model`, `endpoint`, `status`, `since`, `until`, `limit`, `cursor` | `items[]` lightweight summaries plus `nextCursor` |
+| `get_inference_context` | Inspect one chosen inference in bounded detail | `id`, optional `sections[]`, optional `body{name,offset,limit}` | `availableSections`, requested sections, optional `bodyChunk` |
 
-All filters are optional and combine with AND. Empty/zero means "no constraint".
+### `resolve_inference_context`
 
-### Resources
+Use this to discover what exists before searching.
 
-| Resource URI | Content |
-|--------------|---------|
-| `inference://recent` | The 20 most recent inferences as a JSON array. |
-| `inference://{id}` | A single full inference record as JSON. Unknown id → resource-not-found. |
+| Field | Meaning |
+|-------|---------|
+| `models[]` | Distinct model names with counts |
+| `endpoints[]` | Distinct endpoints with counts |
+| `statuses[]` | Distinct lifecycle statuses with counts |
+| `timeRange.oldest/latest` | Bounds of stored telemetry |
+| `counts.total` | Total stored inference rows |
+| `supportedFilters` | Always declares `model`, `endpoint`, `status`, `since`, `until` |
 
-### What's in an inference record
+This response never includes request bodies, response bodies, or per-event detail.
 
-Each record carries: `id`, `at`, `endpoint`, `method`, `model`, `promptSize`,
-`streaming`, `status`, `statusCode`, the captured `requestBody` /
-`responseBody` (with `*Truncated` flags), `requestHeaders` / `responseHeaders`,
-and `tokens` (prompt/eval counts, durations, derived tokens/sec and latency).
-`tokens` is `null` when metrics are not applicable (in-progress or
-metadata-only requests) — it is never faked as zero.
+### `search_inferences`
+
+Use this to page through lightweight candidates.
+
+| Input | Notes |
+|-------|-------|
+| `limit` | Defaults to `20`, maximum `100` |
+| `cursor` | Opaque token returned by the previous page |
+| `model`, `endpoint`, `status`, `since`, `until` | Optional filters combined with AND |
+
+Each summary contains stable fields only: `id`, `at`, `model`, `endpoint`, `method`, `status`, `statusCode`, `streaming`, and `promptSize`.
+
+Ordering is deterministic: **`at DESC, id DESC`**. That secondary `id` tie-breaker matters when several rows share the same timestamp. Repeating the same search on an unchanged dataset yields the same order and the same page boundaries.
+
+### `get_inference_context`
+
+Use this only after you already know the target `id`.
+
+#### Sections
+
+Supported `sections[]` values:
+
+- `metadata`
+- `tokens`
+- `request_headers`
+- `response_headers`
+
+If `sections` is omitted, the server returns `metadata` by default.
+
+#### Body chunks
+
+Bodies are read on demand through `body`:
+
+```json
+{
+  "id": "inf_123",
+  "sections": ["metadata", "tokens"],
+  "body": {
+    "name": "request_body",
+    "offset": 0,
+    "limit": 4096
+  }
+}
+```
+
+`bodyChunk` returns:
+
+| Field | Meaning |
+|-------|---------|
+| `name` | `request_body` or `response_body` |
+| `offset` / `limit` | Slice requested |
+| `nextOffset` | Next byte position to request |
+| `hasMore` | More bytes remain in the stored body |
+| `totalBytes` | Stored body length |
+| `content` | Returned body slice |
+| `truncated` | The original capture was truncated before persistence |
+
+Requesting an unavailable section or an exhausted body range is still a successful call. The server reports availability and returns an empty slice for that part instead of fabricating data.
+
+### What is intentionally gone
+
+The server no longer exposes these legacy entry points:
+
+- `query_inferences`
+- `get_inference`
+- `get_stats`
+- `list_models`
+- `inference://recent`
+- `inference://{id}`
 
 ## 4. Try it
 
 Once registered, prompt your LLM naturally:
 
-- "List the Ollama models I've used recently."
-- "What's the p95 tokens/sec for `llama3` in the last hour?"
-- "Show me the most recent failed (`status` non-2xx) request and its body."
-- "Compare average latency across models."
-
-The LLM will call `list_models`, `get_stats`, `query_inferences`, and
-`get_inference` as needed.
+- "What models and endpoints are available in the stored telemetry?"
+- "Search the last hour for failed `/api/generate` calls and show me the newest 5 summaries."
+- "Open inference `...` and give me metadata, token stats, and the first 4 KiB of the response body."
+- "Continue from this `nextCursor` and fetch the next page."
 
 ## Troubleshooting
 

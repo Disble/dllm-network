@@ -2,25 +2,23 @@ package mcp
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"ollama-telemetry/internal/store"
 )
 
-// TestNewServer_RegistersAllToolsAndResources exercises the full
+// TestNewServer_RegistersExactThreeToolsAndNoResources exercises the full
 // registration wiring (NewServer) end-to-end via the SDK's in-memory
-// transport pair, proving tools/resources registered against a fake
-// InferenceReader are reachable through a real (non-stdio) MCP session —
-// satisfying the "core testable with a faked transport" spec scenario
-// without spinning up stdio.
-func TestNewServer_RegistersAllToolsAndResources(t *testing.T) {
+// transport pair, proving the revised Context7-style contract advertises
+// exactly three tools and no MCP resources.
+func TestNewServer_RegistersExactThreeToolsAndNoResources(t *testing.T) {
 	reader := &fakeReader{
-		queryResult:  []inference.Inference{{ID: "inf-1", Model: "llama3"}},
-		getResult:    inference.Inference{ID: "inf-1", Model: "llama3"},
-		getOK:        true,
-		modelsResult: []string{"llama3"},
+		resolveResult: store.ResolveInferenceContextResult{
+			SupportedFilters: []string{"model", "endpoint", "status", "since", "until"},
+		},
 	}
 
 	srv := NewServer(reader)
@@ -48,15 +46,19 @@ func TestNewServer_RegistersAllToolsAndResources(t *testing.T) {
 		t.Fatalf("ListTools failed: %v", err)
 	}
 	wantTools := map[string]bool{
-		"query_inferences": false,
-		"get_inference":    false,
-		"get_stats":        false,
-		"list_models":      false,
+		"resolve_inference_context": false,
+		"search_inferences":         false,
+		"get_inference_context":     false,
+	}
+	if len(tools.Tools) != len(wantTools) {
+		t.Fatalf("expected exactly %d tools, got %d", len(wantTools), len(tools.Tools))
 	}
 	for _, tool := range tools.Tools {
 		if _, ok := wantTools[tool.Name]; ok {
 			wantTools[tool.Name] = true
+			continue
 		}
+		t.Errorf("unexpected tool registered: %q", tool.Name)
 	}
 	for name, found := range wantTools {
 		if !found {
@@ -64,31 +66,29 @@ func TestNewServer_RegistersAllToolsAndResources(t *testing.T) {
 		}
 	}
 
+	gotToolNames := make([]string, 0, len(tools.Tools))
+	for _, tool := range tools.Tools {
+		gotToolNames = append(gotToolNames, tool.Name)
+	}
+	for _, removedName := range []string{"query_inferences", "get_inference", "get_stats", "list_models"} {
+		if slices.Contains(gotToolNames, removedName) {
+			t.Fatalf("legacy tool %q must not be advertised", removedName)
+		}
+	}
+
 	resources, err := session.ListResources(ctx, &mcp.ListResourcesParams{})
 	if err != nil {
 		t.Fatalf("ListResources failed: %v", err)
 	}
-	foundRecent := false
-	for _, res := range resources.Resources {
-		if res.URI == "inference://recent" {
-			foundRecent = true
-		}
-	}
-	if !foundRecent {
-		t.Error("resource inference://recent was not registered")
+	if len(resources.Resources) != 0 {
+		t.Fatalf("expected zero resources, got %d", len(resources.Resources))
 	}
 
 	templates, err := session.ListResourceTemplates(ctx, &mcp.ListResourceTemplatesParams{})
 	if err != nil {
 		t.Fatalf("ListResourceTemplates failed: %v", err)
 	}
-	foundTemplate := false
-	for _, tpl := range templates.ResourceTemplates {
-		if tpl.URITemplate == "inference://{id}" {
-			foundTemplate = true
-		}
-	}
-	if !foundTemplate {
-		t.Error("resource template inference://{id} was not registered")
+	if len(templates.ResourceTemplates) != 0 {
+		t.Fatalf("expected zero resource templates, got %d", len(templates.ResourceTemplates))
 	}
 }

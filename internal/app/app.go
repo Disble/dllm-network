@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"sync"
+	"time"
 
 	"ollama-telemetry/internal/activity"
 	"ollama-telemetry/internal/capture"
@@ -62,6 +63,12 @@ type Dependencies struct {
 	// config-dir path. Tests inject a fake Writer to exercise the async
 	// write path without touching disk.
 	PersistenceWriter persistence.Writer
+	// CaptureEmitInterval bounds how often the capture pipeline's snapshot is
+	// emitted to the frontend (conflated via coalescingProjector). Zero means
+	// synchronous pass-through — the default for tests, which assert emissions
+	// deterministically. The production entrypoint New() sets
+	// defaultCaptureEmitInterval.
+	CaptureEmitInterval time.Duration
 	// wailsEmitter overrides the default Wails runtime emitter. Used in tests
 	// to intercept emitted snapshots without a live Wails runtime.
 	wailsEmitter  wailsEmitter
@@ -83,6 +90,7 @@ type App struct {
 	visible       bool
 	captureSource capture.CaptureSource
 	pipeline      *inferencePipeline
+	captureEmit   *coalescingProjector
 	emitter       wailsEmitter
 	bus           *events.Bus
 
@@ -112,7 +120,8 @@ var newProductionStore = openDefaultStore
 // persistence writer (opened lazily on Startup).
 func New() *App {
 	app := NewWithDependencies(Dependencies{
-		TrayManager: tray.NewSystrayManager(),
+		TrayManager:         tray.NewSystrayManager(),
+		CaptureEmitInterval: defaultCaptureEmitInterval,
 	})
 	app.useProductionStore = true
 	return app
@@ -175,7 +184,12 @@ func NewWithDependencies(deps Dependencies) *App {
 	// The capture pipeline publishes through the capturePublisher adapter, which
 	// routes into the shared assembler and emits a COMPLETE merged Snapshot —
 	// never an Inference-only partial that would clobber the Ollama/System data.
-	pipeline := newInferencePipeline(src, recentStore, capturePublisher{assembler}, bus)
+	// The capturePublisher is wrapped in a coalescingProjector so the capture
+	// hot path is not stalled by per-segment JSON marshal + Wails emit (which
+	// would back-pressure the WinDivert queue into dropping packets). Tests pass
+	// CaptureEmitInterval=0 for synchronous, deterministic emission.
+	captureEmit := newCoalescingProjector(capturePublisher{assembler}, deps.CaptureEmitInterval)
+	pipeline := newInferencePipeline(src, recentStore, captureEmit, bus)
 
 	return &App{
 		window:            window,
@@ -184,6 +198,7 @@ func NewWithDependencies(deps Dependencies) *App {
 		config:            config,
 		captureSource:     src,
 		pipeline:          pipeline,
+		captureEmit:       captureEmit,
 		emitter:           emitter,
 		bus:               bus,
 		persistenceWriter: deps.PersistenceWriter,
@@ -197,12 +212,19 @@ func (app *App) Startup(ctx context.Context) {
 	app.visible = false
 	trayManager := app.trayManager
 	pipeline := app.pipeline
+	captureEmit := app.captureEmit
 	bus := app.bus
 	writer := app.persistenceWriter
 	useProductionStore := app.useProductionStore
 	app.mu.Unlock()
 
 	_ = app.orchestrator.Start(ctx)
+
+	// Start the capture snapshot coalescer before the pipeline so the first
+	// emitted state is forwarded on cadence. No-op in pass-through mode (tests).
+	if captureEmit != nil {
+		captureEmit.start(ctx)
+	}
 
 	// Start the capture pipeline. Graceful degradation: if the source is not
 	// Active (unelevated, noop), the goroutine exits immediately without crash.
@@ -285,6 +307,7 @@ func (app *App) Quit() error {
 	ctx := app.operationContext()
 	timeout := app.config.ShutdownTimeout
 	pipeline := app.pipeline
+	captureEmit := app.captureEmit
 	persistenceLC := app.persistence
 	app.mu.RUnlock()
 
@@ -299,6 +322,12 @@ func (app *App) Quit() error {
 	// cancelled and its context propagated through the shutdownCtx timeout.
 	if pipeline != nil {
 		pipeline.stop()
+	}
+
+	// Stop the snapshot coalescer after the pipeline (no more Publish calls):
+	// its final flush emits the last captured state before shutdown.
+	if captureEmit != nil {
+		captureEmit.stop()
 	}
 
 	// Stop the persistence subscriber after capture: flushes any remaining

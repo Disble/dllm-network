@@ -41,10 +41,10 @@ func TestDependencies_CaptureSourceInjected(t *testing.T) {
 	_ = fake.Open()
 
 	app := NewWithDependencies(Dependencies{
-		Window:         &fakeWindow{},
-		Orchestrator:   &fakeOrchestrator{state: orchestrator.StateRunning},
-		Config:         telemetry.Config{ShutdownTimeout: time.Second},
-		CaptureSource:  fake,
+		Window:        &fakeWindow{},
+		Orchestrator:  &fakeOrchestrator{state: orchestrator.StateRunning},
+		Config:        telemetry.Config{ShutdownTimeout: time.Second},
+		CaptureSource: fake,
 	})
 
 	st := app.captureSource.Status()
@@ -503,6 +503,214 @@ func TestCapturePipeline_PopulatesGeneration(t *testing.T) {
 	}
 }
 
+// TestCapturePipeline_LiveGenerationGrowsDuringStreaming proves the pipeline
+// publishes normalized Generation snapshots during streaming, not only after
+// completion, for both Ollama NDJSON and OpenAI SSE endpoints.
+func TestCapturePipeline_LiveGenerationGrowsDuringStreaming(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	testCases := []struct {
+		name          string
+		endpoint      string
+		request       []byte
+		responseParts [][]byte
+		wantGrowth    []string
+	}{
+		{
+			name:          "ollama_generate",
+			endpoint:      "/api/generate",
+			request:       buildFakeGenerateRequest(),
+			responseParts: buildFakeGenerateStreamingResponseParts("h", "i"),
+			wantGrowth:    []string{"h", "hi"},
+		},
+		{
+			name:          "openai_chat",
+			endpoint:      "/v1/chat/completions",
+			request:       buildFakeOpenAIRequest(),
+			responseParts: buildFakeOpenAIStreamingResponseParts("h", "i"),
+			wantGrowth:    []string{"h", "hi"},
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			baseTime := time.Now()
+			tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+			segments := []capture.Segment{{Tuple: tuple, Dir: capture.DirToServer, Payload: tt.request, SeqNo: 0, At: baseTime}}
+
+			seqNo := uint32(0)
+			for i, part := range tt.responseParts {
+				segments = append(segments, capture.Segment{
+					Tuple:   tuple,
+					Dir:     capture.DirFromServer,
+					Payload: part,
+					SeqNo:   seqNo,
+					At:      baseTime.Add(time.Duration(i+1) * 10 * time.Millisecond),
+				})
+				seqNo += uint32(len(part))
+			}
+
+			var emitted []dashboard.Snapshot
+			emitFn := func(ctx context.Context, event string, payload ...any) {
+				if event == dashboard.TopicDashboardSnapshot {
+					if snap, ok := payload[0].(dashboard.Snapshot); ok {
+						emitted = append(emitted, snap)
+					}
+				}
+			}
+
+			app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			app.Startup(ctx)
+
+			done, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+				cur := snap.Inference.Current
+				return cur.Endpoint == tt.endpoint && cur.Status == inference.PhaseCompleted
+			})
+			if !found {
+				t.Fatalf("no completed %s inference; got %d snapshots", tt.endpoint, len(emitted))
+			}
+
+			growth := streamedGenerationOutputs(emitted, tt.endpoint)
+			if !containsOrderedOutputs(growth, tt.wantGrowth) {
+				t.Fatalf("in-progress generation growth = %v, want ordered subsequence %v", growth, tt.wantGrowth)
+			}
+
+			completed := done.Inference.Current.Generation
+			if completed == nil {
+				t.Fatal("expected completed generation snapshot")
+			}
+			wantFinal := tt.wantGrowth[len(tt.wantGrowth)-1]
+			if completed.Output != wantFinal {
+				t.Fatalf("completed Generation.Output = %q, want %q", completed.Output, wantFinal)
+			}
+			if last := lastOutput(growth); last != wantFinal {
+				t.Fatalf("final in-progress output = %q, want parity with completed %q", last, wantFinal)
+			}
+		})
+	}
+}
+
+// TestCapturePipeline_GenerationResetAcrossKeepAliveReuse proves a new request
+// on the same keep-alive tuple starts from a fresh generation state.
+func TestCapturePipeline_GenerationResetAcrossKeepAliveReuse(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	baseTime := time.Now()
+	tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+	firstRequest := buildFakeGenerateRequestWithPrompt("first")
+	firstParts := buildFakeGenerateStreamingResponseParts("h", "i")
+	secondRequest := buildFakeGenerateRequestWithPrompt("second")
+	secondParts := buildFakeGenerateStreamingResponseParts("o", "k")
+
+	segments := []capture.Segment{
+		{Tuple: tuple, Dir: capture.DirToServer, Payload: firstRequest, SeqNo: 0, At: baseTime},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: firstParts[0], SeqNo: 0, At: baseTime.Add(10 * time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: firstParts[1], SeqNo: uint32(len(firstParts[0])), At: baseTime.Add(20 * time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: firstParts[2], SeqNo: uint32(len(firstParts[0]) + len(firstParts[1])), At: baseTime.Add(30 * time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: firstParts[3], SeqNo: uint32(len(firstParts[0]) + len(firstParts[1]) + len(firstParts[2])), At: baseTime.Add(40 * time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirToServer, Payload: secondRequest, SeqNo: uint32(len(firstRequest)), At: baseTime.Add(50 * time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: secondParts[0], SeqNo: uint32(totalLen(firstParts...)), At: baseTime.Add(60 * time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: secondParts[1], SeqNo: uint32(totalLen(firstParts...) + len(secondParts[0])), At: baseTime.Add(70 * time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: secondParts[2], SeqNo: uint32(totalLen(firstParts...) + len(secondParts[0]) + len(secondParts[1])), At: baseTime.Add(80 * time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: secondParts[3], SeqNo: uint32(totalLen(firstParts...) + len(secondParts[0]) + len(secondParts[1]) + len(secondParts[2])), At: baseTime.Add(90 * time.Millisecond)},
+	}
+
+	var emitted []dashboard.Snapshot
+	emitFn := func(ctx context.Context, event string, payload ...any) {
+		if event == dashboard.TopicDashboardSnapshot {
+			if snap, ok := payload[0].(dashboard.Snapshot); ok {
+				emitted = append(emitted, snap)
+			}
+		}
+	}
+
+	app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	secondDone, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+		cur := snap.Inference.Current
+		return cur.Endpoint == "/api/generate" && cur.Status == inference.PhaseCompleted && cur.Generation != nil && cur.Generation.Output == "ok"
+	})
+	if !found {
+		t.Fatalf("no completed second keep-alive inference; got %d snapshots", len(emitted))
+	}
+
+	if secondDone.Inference.Current.Generation == nil {
+		t.Fatal("expected completed generation for second keep-alive request")
+	}
+	if got := secondDone.Inference.Current.Generation.Output; got != "ok" {
+		t.Fatalf("second keep-alive Generation.Output = %q, want %q", got, "ok")
+	}
+}
+
+// TestCapturePipeline_GenerationCleanupOnIdleCancellation proves stale partial
+// generation state is evicted on idle cancellation before the tuple is reused
+// by a later exchange. The fresh exchange must start from a clean accumulator,
+// so its final output cannot contain bytes from the stale partial stream.
+func TestCapturePipeline_GenerationCleanupOnIdleCancellation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	baseTime := time.Now()
+	tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+	otherTuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54322, DstPort: 11434}
+	staleRequest := buildFakeGenerateRequestWithPrompt("stale")
+	freshRequest := buildFakeGenerateRequestWithPrompt("fresh")
+	sweepRequest := buildFakeGenerateRequestWithPrompt("sweep")
+
+	firstParts := buildFakeGenerateStreamingResponseParts("h", "i")
+	secondParts := buildFakeGenerateStreamingResponseParts("o", "k")
+
+	segments := []capture.Segment{
+		{Tuple: tuple, Dir: capture.DirToServer, Payload: staleRequest, SeqNo: 0, At: baseTime},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: firstParts[0], SeqNo: 0, At: baseTime.Add(10 * time.Millisecond)},
+		{Tuple: otherTuple, Dir: capture.DirToServer, Payload: sweepRequest, SeqNo: 0, At: baseTime.Add(captureIdleTimeout + captureSweepInterval)},
+		{Tuple: tuple, Dir: capture.DirToServer, Payload: freshRequest, SeqNo: uint32(len(staleRequest)), At: baseTime.Add(captureIdleTimeout + captureSweepInterval + 10*time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: secondParts[0], SeqNo: uint32(len(firstParts[0])), At: baseTime.Add(captureIdleTimeout + captureSweepInterval + 20*time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: secondParts[1], SeqNo: uint32(len(firstParts[0]) + len(secondParts[0])), At: baseTime.Add(captureIdleTimeout + captureSweepInterval + 30*time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: secondParts[2], SeqNo: uint32(len(firstParts[0]) + len(secondParts[0]) + len(secondParts[1])), At: baseTime.Add(captureIdleTimeout + captureSweepInterval + 40*time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: secondParts[3], SeqNo: uint32(len(firstParts[0]) + len(secondParts[0]) + len(secondParts[1]) + len(secondParts[2])), At: baseTime.Add(captureIdleTimeout + captureSweepInterval + 50*time.Millisecond)},
+	}
+
+	var emitted []dashboard.Snapshot
+	emitFn := func(ctx context.Context, event string, payload ...any) {
+		if event == dashboard.TopicDashboardSnapshot {
+			if snap, ok := payload[0].(dashboard.Snapshot); ok {
+				emitted = append(emitted, snap)
+			}
+		}
+	}
+
+	app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	freshDone, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+		cur := snap.Inference.Current
+		return cur.Endpoint == "/api/generate" && cur.Status == inference.PhaseCompleted && cur.Generation != nil && cur.Generation.Output == "ok"
+	})
+	if !found {
+		t.Fatalf("no completed fresh inference after idle eviction; got %d snapshots", len(emitted))
+	}
+
+	if freshDone.Inference.Current.Generation == nil {
+		t.Fatal("expected completed generation for fresh exchange")
+	}
+	if got := freshDone.Inference.Current.Generation.Output; got != "ok" {
+		t.Fatalf("fresh Generation.Output after idle eviction = %q, want %q", got, "ok")
+	}
+}
+
 // TestCapturePipeline_OpenAITTFTSplitsTiming asserts that for an OpenAI stream
 // (no server-side durations) the pipeline derives REAL waterfall phases from the
 // observed packet times: LoadDuration = time-to-first-token (request -> first
@@ -717,7 +925,7 @@ type trackingCaptureSource struct {
 	closed bool
 }
 
-func (t *trackingCaptureSource) Open() error                              { return t.inner.Open() }
+func (t *trackingCaptureSource) Open() error { return t.inner.Open() }
 func (t *trackingCaptureSource) Recv(ctx context.Context) (capture.Segment, error) {
 	return t.inner.Recv(ctx)
 }
@@ -748,6 +956,23 @@ func buildFakeGenerateResponse() []byte {
 		chunk1 + chunk2 + terminal)
 }
 
+func buildFakeGenerateRequestWithPrompt(prompt string) []byte {
+	body := `{"model":"llama3","prompt":"` + prompt + `"}`
+	return []byte("POST /api/generate HTTP/1.1\r\nHost: 127.0.0.1:11434\r\nContent-Type: application/json\r\nContent-Length: " +
+		itoa(len(body)) + "\r\n\r\n" + body)
+}
+
+func buildFakeGenerateStreamingResponseParts(tokens ...string) [][]byte {
+	parts := [][]byte{[]byte("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: application/x-ndjson\r\n\r\n")}
+	for _, token := range tokens {
+		line := `{"model":"llama3","response":"` + token + `","done":false}` + "\n"
+		parts = append(parts, []byte(itohex(len(line))+"\r\n"+line+"\r\n"))
+	}
+	terminal := `{"model":"llama3","response":"","done":true,"prompt_eval_count":5,"eval_count":2,"eval_duration":200000000,"total_duration":250000000,"load_duration":10000000}` + "\n"
+	parts = append(parts, []byte(itohex(len(terminal))+"\r\n"+terminal+"\r\n0\r\n\r\n"))
+	return parts
+}
+
 // buildFakeOpenAIRequest produces a POST /v1/chat/completions request with an
 // OpenAI-style body (model + messages).
 func buildFakeOpenAIRequest() []byte {
@@ -767,6 +992,62 @@ func buildFakeOpenAIResponse() []byte {
 	chunk := func(s string) string { return itohex(len(s)) + "\r\n" + s + "\r\n" }
 	return []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n" +
 		chunk(content) + chunk(usage) + chunk(done) + "0\r\n\r\n")
+}
+
+func buildFakeOpenAIStreamingResponseParts(tokens ...string) [][]byte {
+	parts := [][]byte{[]byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n")}
+	for _, token := range tokens {
+		line := `data: {"object":"chat.completion.chunk","model":"gemma4:12b","choices":[{"index":0,"delta":{"content":"` + token + `"},"finish_reason":null}]}` + "\n\n"
+		parts = append(parts, []byte(itohex(len(line))+"\r\n"+line+"\r\n"))
+	}
+	done := "data: [DONE]\n\n"
+	parts = append(parts, []byte(itohex(len(done))+"\r\n"+done+"\r\n0\r\n\r\n"))
+	return parts
+}
+
+func streamedGenerationOutputs(emitted []dashboard.Snapshot, endpoint string) []string {
+	outputs := make([]string, 0)
+	for _, snap := range emitted {
+		cur := snap.Inference.Current
+		if cur.Endpoint != endpoint || cur.Status != inference.PhaseInProgress || cur.Generation == nil {
+			continue
+		}
+		if len(outputs) == 0 || outputs[len(outputs)-1] != cur.Generation.Output {
+			outputs = append(outputs, cur.Generation.Output)
+		}
+	}
+	return outputs
+}
+
+func containsOrderedOutputs(got, want []string) bool {
+	if len(want) == 0 {
+		return true
+	}
+	idx := 0
+	for _, output := range got {
+		if output == want[idx] {
+			idx++
+			if idx == len(want) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func lastOutput(outputs []string) string {
+	if len(outputs) == 0 {
+		return ""
+	}
+	return outputs[len(outputs)-1]
+}
+
+func totalLen(parts ...[]byte) int {
+	total := 0
+	for _, part := range parts {
+		total += len(part)
+	}
+	return total
 }
 
 func itoa(n int) string {

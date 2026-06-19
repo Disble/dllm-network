@@ -146,6 +146,11 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 	// inspector. Reset when a new request begins on the same keep-alive tuple.
 	respAccum := make(map[reassembly.FourTuple][]byte)
 
+	// genAccum incrementally builds the normalized Generation snapshot per
+	// logical exchange so live dashboard snapshots can surface partial output
+	// without rescanning the full assembled response on every chunk.
+	genAccum := make(map[reassembly.FourTuple]*inference.GenerationAccumulator)
+
 	// reqTime records when each request was observed, so latency for endpoints
 	// that carry no server-side durations (OpenAI /v1) can be derived from wall
 	// clock (request -> completion).
@@ -202,6 +207,7 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 			delete(requestBuf, key)
 			delete(reqID, key)
 			delete(respAccum, key)
+			delete(genAccum, key)
 			delete(reqTime, key)
 			delete(firstTokenTime, key)
 			delete(lastSeen, key)
@@ -267,8 +273,11 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 						requestBuf[key] = m
 						idSeq++
 						reqID[key] = inferenceID(runID, idSeq)
-						reqTime[key] = seg.At    // for wall-clock latency (OpenAI /v1)
-						delete(respAccum, key) // fresh exchange on this connection
+						reqTime[key] = seg.At       // for wall-clock latency (OpenAI /v1)
+						delete(respAccum, key)      // fresh exchange on this connection
+						delete(firstTokenTime, key) // reset TTFT for keep-alive reuse
+						delete(genAccum, key)
+						genAccum[key] = inference.NewGenerationAccumulator(m.Path)
 
 						// Emit an in-progress inference the moment the request is
 						// observed, before any response byte arrives. For stream:false
@@ -307,6 +316,11 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					acc = append(acc, '\n')
 					respAccum[key] = acc
 
+					if genAccum[key] == nil {
+						genAccum[key] = inference.NewGenerationAccumulator(req.Path)
+					}
+					genAccum[key].Feed(m.Body)
+
 					// Observe the time-to-first-token: the first chunk carrying
 					// generated content marks the prompt->generation transition,
 					// used to split the waterfall for streams without server-side
@@ -339,14 +353,8 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 						inf.At = reqTime[key]
 					}
 					inf.ResponseBody, inf.ResponseBodyTruncated = inference.TruncateBody(respAccum[key])
-					// Derive the normalized generation (assembled output text,
-					// reasoning, finish reason, context) from the FULL assembled
-					// stream — the single anti-corruption boundary that knows the
-					// wire format. Only on completion: re-parsing the growing body
-					// on every chunk would be O(n²), and the detail view shows the
-					// finished generation, not a half-streamed one.
-					if inf.Status == inference.PhaseCompleted {
-						inf.Generation = inference.ExtractGeneration(inf.Endpoint, respAccum[key])
+					if gen := genAccum[key]; gen != nil {
+						inf.Generation = gen.Build()
 					}
 					// OpenAI streaming completes on the [DONE] sentinel, which carries
 					// no counts — the `usage` arrived in an earlier SSE chunk. Recover
@@ -376,6 +384,7 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 							p.bus.Publish(events.Event{Topic: topicInferenceCompleted, Payload: inf})
 						}
 						delete(respAccum, key) // exchange done; release buffer
+						delete(genAccum, key)
 						delete(reqTime, key)
 						delete(firstTokenTime, key)
 					}

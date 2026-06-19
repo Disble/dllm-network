@@ -10,9 +10,18 @@ import (
 	"ollama-telemetry/internal/capture/httpx"
 	"ollama-telemetry/internal/capture/reassembly"
 	"ollama-telemetry/internal/dashboard"
+	"ollama-telemetry/internal/events"
 	"ollama-telemetry/internal/store"
 	"ollama-telemetry/internal/telemetry/inference"
 )
+
+// topicInferenceCompleted is the events.Bus topic the capture pipeline
+// publishes to on each completed inference, durably persisted by
+// internal/persistence.Subscriber (design D7 write trigger). Kept as its
+// own constant here (matching internal/persistence's own copy) so this
+// package does not need to import internal/persistence just for the topic
+// name — the two packages are coupled only through the topic string.
+const topicInferenceCompleted = "inference.completed"
 
 // isTerminalRecvErr returns true for errors that should cause the recv-loop to
 // exit cleanly: context cancellation, deadline exceeded, or the fake source's
@@ -39,6 +48,11 @@ type inferencePipeline struct {
 	recent    *store.Recent
 	publisher snapshotProjector
 	extractor *inference.Extractor
+	// bus is the optional events.Bus the pipeline publishes completed
+	// inferences to for durable persistence (internal/persistence.Subscriber
+	// subscribes to topicInferenceCompleted). Nil-safe: when nil (e.g. tests
+	// that only exercise the live dashboard projection), publish is skipped.
+	bus *events.Bus
 
 	// cancelCapture stops the capture goroutine's context.
 	cancelCapture context.CancelFunc
@@ -46,17 +60,20 @@ type inferencePipeline struct {
 }
 
 // newInferencePipeline creates a pipeline wired to the given source, store,
-// and publisher. It does NOT start the goroutine — call run().
+// and publisher. It does NOT start the goroutine — call run(). bus may be
+// nil; see the inferencePipeline.bus field doc.
 func newInferencePipeline(
 	src capture.CaptureSource,
 	recent *store.Recent,
 	publisher snapshotProjector,
+	bus *events.Bus,
 ) *inferencePipeline {
 	return &inferencePipeline{
 		src:       src,
 		recent:    recent,
 		publisher: publisher,
 		extractor: inference.NewExtractor(),
+		bus:       bus,
 		done:      make(chan struct{}),
 	}
 }
@@ -244,6 +261,16 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					current = inf
 					if inf.Status == inference.PhaseCompleted {
 						p.recent.RecordInferenceCompletion(inf)
+						// Sibling durable-write trigger (design D7): the ring
+						// above serves the live dashboard projection; this
+						// publish feeds internal/persistence.Subscriber for
+						// cross-process durable storage. Bus.Publish is
+						// synchronous but the subscriber's handler only does a
+						// non-blocking channel send, so this never stalls the
+						// capture loop.
+						if p.bus != nil {
+							p.bus.Publish(events.Event{Topic: topicInferenceCompleted, Payload: inf})
+						}
 						delete(respAccum, key) // exchange done; release buffer
 						delete(reqTime, key)
 					}

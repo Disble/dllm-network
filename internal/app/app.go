@@ -2,11 +2,14 @@ package app
 
 import (
 	"context"
+	"log"
 	"sync"
 
 	"ollama-telemetry/internal/activity"
 	"ollama-telemetry/internal/capture"
 	"ollama-telemetry/internal/dashboard"
+	"ollama-telemetry/internal/events"
+	"ollama-telemetry/internal/persistence"
 	"ollama-telemetry/internal/store"
 	"ollama-telemetry/internal/telemetry"
 	"ollama-telemetry/internal/telemetry/ollama"
@@ -53,6 +56,12 @@ type Dependencies struct {
 	// returns the real WinDivert source (or noop on non-windows). Tests inject
 	// a fake source here to exercise the full pipeline without a driver.
 	CaptureSource capture.CaptureSource
+	// PersistenceWriter is the durable-write sink (design D7) the capture
+	// pipeline's completed inferences are batched into. When nil,
+	// NewWithDependencies opens the production sqlite.Store at the default
+	// config-dir path. Tests inject a fake Writer to exercise the async
+	// write path without touching disk.
+	PersistenceWriter persistence.Writer
 	// wailsEmitter overrides the default Wails runtime emitter. Used in tests
 	// to intercept emitted snapshots without a live Wails runtime.
 	wailsEmitter  wailsEmitter
@@ -75,13 +84,38 @@ type App struct {
 	captureSource capture.CaptureSource
 	pipeline      *inferencePipeline
 	emitter       wailsEmitter
+	bus           *events.Bus
+
+	// persistenceWriter is the durable-write sink resolved at construction
+	// time. Dependencies.PersistenceWriter (tests) is used verbatim — when
+	// unset, it stays nil and Startup runs WITHOUT durable persistence
+	// rather than silently opening a real file on disk. Only the production
+	// entrypoint New() supplies the real sqlite.Store (deferred via
+	// newProductionStore so opening the file happens lazily at Startup, not
+	// at construction — mirroring the capture source's Open() happening in
+	// pipeline.run(), not in newInferencePipeline).
+	persistenceWriter  persistence.Writer
+	useProductionStore bool
+	persistence        *persistenceLifecycle
 }
 
-// New creates the application binding used by Wails.
+// newProductionStore is a package-level func-var seam mirroring
+// newCaptureSource: production code points it at the real sqlite.Store
+// opened at the default config-dir path. It is only ever invoked from
+// Startup (lazily, never from the constructor) and only when New() (not
+// NewWithDependencies) constructed the App, so unit tests that build an App
+// via NewWithDependencies without a PersistenceWriter never touch disk.
+var newProductionStore = openDefaultStore
+
+// New creates the application binding used by Wails. Unlike
+// NewWithDependencies, New wires the real production sqlite.Store as the
+// persistence writer (opened lazily on Startup).
 func New() *App {
-	return NewWithDependencies(Dependencies{
+	app := NewWithDependencies(Dependencies{
 		TrayManager: tray.NewSystrayManager(),
 	})
+	app.useProductionStore = true
+	return app
 }
 
 func NewWithDependencies(deps Dependencies) *App {
@@ -133,19 +167,26 @@ func NewWithDependencies(deps Dependencies) *App {
 		src = newCaptureSource()
 	}
 
+	// bus carries completed inferences from the capture pipeline to the
+	// persistence subscriber (design D7). One bus per App, shared between
+	// the pipeline's publish call and the subscriber's HandleEvent.
+	bus := events.NewBus()
+
 	// The capture pipeline publishes through the capturePublisher adapter, which
 	// routes into the shared assembler and emits a COMPLETE merged Snapshot —
 	// never an Inference-only partial that would clobber the Ollama/System data.
-	pipeline := newInferencePipeline(src, recentStore, capturePublisher{assembler})
+	pipeline := newInferencePipeline(src, recentStore, capturePublisher{assembler}, bus)
 
 	return &App{
-		window:        window,
-		orchestrator:  orchestratorInstance,
-		trayManager:   deps.TrayManager,
-		config:        config,
-		captureSource: src,
-		pipeline:      pipeline,
-		emitter:       emitter,
+		window:            window,
+		orchestrator:      orchestratorInstance,
+		trayManager:       deps.TrayManager,
+		config:            config,
+		captureSource:     src,
+		pipeline:          pipeline,
+		emitter:           emitter,
+		bus:               bus,
+		persistenceWriter: deps.PersistenceWriter,
 	}
 }
 
@@ -156,6 +197,9 @@ func (app *App) Startup(ctx context.Context) {
 	app.visible = false
 	trayManager := app.trayManager
 	pipeline := app.pipeline
+	bus := app.bus
+	writer := app.persistenceWriter
+	useProductionStore := app.useProductionStore
 	app.mu.Unlock()
 
 	_ = app.orchestrator.Start(ctx)
@@ -165,6 +209,32 @@ func (app *App) Startup(ctx context.Context) {
 	if pipeline != nil {
 		pipeline.run(ctx)
 	}
+
+	// Lazily open the real sqlite.Store — ONLY for apps constructed via
+	// New() (the production Wails entrypoint). Apps built via
+	// NewWithDependencies (every test in this package) never touch disk
+	// unless the test explicitly injects Dependencies.PersistenceWriter.
+	// Storage failures degrade gracefully: the app still runs, just without
+	// durable persistence, rather than crashing on startup.
+	if writer == nil && useProductionStore {
+		store, err := newProductionStore()
+		if err != nil {
+			log.Printf("persistence: failed to open sqlite store, durable persistence disabled: %v", err)
+		} else {
+			writer = store
+		}
+	}
+
+	// Start the persistence subscriber's drain loop (design D7). Mirrors the
+	// capture pipeline's run/stop lifecycle: started here, stopped in Quit.
+	var persistenceLC *persistenceLifecycle
+	if writer != nil {
+		persistenceLC = newPersistenceLifecycle(writer)
+		persistenceLC.start(ctx, bus)
+	}
+	app.mu.Lock()
+	app.persistence = persistenceLC
+	app.mu.Unlock()
 
 	if trayManager != nil {
 		_ = trayManager.Start(tray.Config{
@@ -215,6 +285,7 @@ func (app *App) Quit() error {
 	ctx := app.operationContext()
 	timeout := app.config.ShutdownTimeout
 	pipeline := app.pipeline
+	persistenceLC := app.persistence
 	app.mu.RUnlock()
 
 	shutdownCtx, cancel := context.WithTimeout(ctx, timeout)
@@ -228,6 +299,13 @@ func (app *App) Quit() error {
 	// cancelled and its context propagated through the shutdownCtx timeout.
 	if pipeline != nil {
 		pipeline.stop()
+	}
+
+	// Stop the persistence subscriber after capture: flushes any remaining
+	// buffered inferences (including ones from the pipeline.stop() above)
+	// and closes the underlying store.
+	if persistenceLC != nil {
+		persistenceLC.stop()
 	}
 
 	if app.trayManager != nil {

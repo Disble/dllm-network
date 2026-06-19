@@ -23,6 +23,26 @@ Passive mode gives honest local observability. It does not give exact request an
 - Exact request or response payloads
 - Exact streaming chunks
 
+## Captured payload retention
+
+When the WinDivert capture source is active, exact request/response payloads
+**are** observed and surfaced in the inference detail inspector. These bodies are
+retained verbatim up to a safety ceiling.
+
+- The ceiling is `inference.MaxBodyBytes` (`internal/telemetry/inference/extractor.go`),
+  set to **16 MiB**. It exists to protect the **frontend render** — the detail
+  view runs `JSON.parse` + pretty-print on the webview main thread, so a
+  pathological multi-hundred-MiB body could freeze the UI. It is **not** a
+  data-minimization cap.
+- Backend memory stays bounded regardless: `store.Recent` keeps only the last 12
+  completed inferences, so worst-case retention is ~12 × (request + response).
+- Bodies above the ceiling are truncated and flagged via the `*Truncated` fields;
+  the UI shows "Truncated at capture limit." Truncation cuts at an arbitrary byte,
+  so a truncated body is no longer valid to pretty-print — expect raw view only.
+- **If a legitimate Ollama response is being truncated, raising `MaxBodyBytes` is
+  safe**: memory scales linearly and stays bounded by the 12-event retention.
+  Re-check the frontend render cost before going far past ~16 MiB.
+
 ## Confidence and evidence rules
 
 - **Confidence** expresses how strong the passive signals are for the inferred claim.

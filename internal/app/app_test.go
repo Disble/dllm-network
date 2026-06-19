@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"ollama-telemetry/internal/capture"
 	"ollama-telemetry/internal/dashboard"
 	"ollama-telemetry/internal/telemetry"
 	"ollama-telemetry/internal/telemetry/orchestrator"
@@ -296,6 +297,12 @@ func newTestApp(window *fakeWindow, controller *fakeOrchestrator, timeout time.D
 		Window:       window,
 		Orchestrator: controller,
 		Config:       telemetry.Config{ShutdownTimeout: timeout},
+		// Inject inert capture seams so these lifecycle tests never touch the
+		// real WinDivert driver or the real Wails runtime: an exhausted fake
+		// source emits nothing, and a noop emitter avoids EventsEmit panicking
+		// without a live Wails context if any stray segment did arrive.
+		CaptureSource: capture.NewFakeSource(nil),
+		wailsEmitter:  wailsEmitter{emit: func(context.Context, string, ...any) {}},
 	})
 }
 

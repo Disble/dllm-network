@@ -31,8 +31,9 @@ func TestPhase5RootValidationScripts(t *testing.T) {
 		{name: "test:go", value: "bun run scripts/go-test-project.mjs"},
 		{name: "test", value: "bun run test:go && bun run scripts/frontend-run.mjs test"},
 		{name: "lint", value: "bun run scripts/frontend-run.mjs lint"},
+		{name: "lint:go", value: "bun run scripts/go-lint-project.mjs"},
 		{name: "typecheck", value: "bun run scripts/frontend-run.mjs typecheck"},
-		{name: "validate", value: "bun run test:go && bun run scripts/frontend-run.mjs lint && bun run scripts/frontend-run.mjs typecheck && bun run scripts/frontend-run.mjs test && bun run scripts/frontend-run.mjs doctor:react"},
+		{name: "validate", value: "bun run test:go && bun run lint:go && bun run scripts/frontend-run.mjs lint && bun run scripts/frontend-run.mjs typecheck && bun run scripts/frontend-run.mjs test && bun run scripts/frontend-run.mjs doctor:react"},
 		{name: "doctor:react", value: "bun run scripts/frontend-run.mjs doctor:react"},
 	}
 
@@ -56,6 +57,19 @@ func TestPhase5RootValidationScripts(t *testing.T) {
 	} {
 		if !strings.Contains(string(scriptContent), expected) {
 			t.Fatalf("expected go-test-project.mjs to contain %q", expected)
+		}
+	}
+
+	lintScriptContent, err := os.ReadFile("scripts/go-lint-project.mjs")
+	if err != nil {
+		t.Fatalf("read scripts/go-lint-project.mjs: %v", err)
+	}
+
+	for _, expected := range []string{
+		"execFileSync('golangci-lint', ['run', './...']",
+	} {
+		if !strings.Contains(string(lintScriptContent), expected) {
+			t.Fatalf("expected go-lint-project.mjs to contain %q", expected)
 		}
 	}
 
@@ -87,12 +101,10 @@ func TestPhase5DocumentationCoversPassiveLimitsAndValidation(t *testing.T) {
 			name: "readme covers quickstart and passive honesty",
 			path: "README.md",
 			expects: []string{
-				"Passive-only Windows tray app",
-				"bun run test",
+				"Passive means it",
+				"does not proxy traffic",
 				"bun run validate",
-				"bun run doctor:react",
-				"confirmed telemetry",
-				"inferred activity",
+				"docs/mcp.md",
 			},
 		},
 		{

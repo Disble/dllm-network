@@ -10,8 +10,29 @@ import (
 	"ollama-telemetry/internal/capture/httpx"
 	"ollama-telemetry/internal/capture/reassembly"
 	"ollama-telemetry/internal/dashboard"
+	"ollama-telemetry/internal/events"
 	"ollama-telemetry/internal/store"
 	"ollama-telemetry/internal/telemetry/inference"
+)
+
+// topicInferenceCompleted is the events.Bus topic the capture pipeline
+// publishes to on each completed inference, durably persisted by
+// internal/persistence.Subscriber (design D7 write trigger). Kept as its
+// own constant here (matching internal/persistence's own copy) so this
+// package does not need to import internal/persistence just for the topic
+// name — the two packages are coupled only through the topic string.
+const topicInferenceCompleted = "inference.completed"
+
+const (
+	// captureIdleTimeout is how long a connection may be silent before its
+	// per-connection bookkeeping is evicted. Matches the reassembler's default
+	// idle timeout so the two layers drop a dead connection together.
+	captureIdleTimeout = 30 * time.Second
+	// captureSweepInterval bounds how often the recv-loop runs the idle sweep.
+	// It is measured against OBSERVED segment timestamps (not wall-clock), so
+	// the sweep cost stays negligible relative to per-segment work and needs no
+	// separate timer goroutine racing the lock-free per-connection maps.
+	captureSweepInterval = 5 * time.Second
 )
 
 // isTerminalRecvErr returns true for errors that should cause the recv-loop to
@@ -39,6 +60,11 @@ type inferencePipeline struct {
 	recent    *store.Recent
 	publisher snapshotProjector
 	extractor *inference.Extractor
+	// bus is the optional events.Bus the pipeline publishes completed
+	// inferences to for durable persistence (internal/persistence.Subscriber
+	// subscribes to topicInferenceCompleted). Nil-safe: when nil (e.g. tests
+	// that only exercise the live dashboard projection), publish is skipped.
+	bus *events.Bus
 
 	// cancelCapture stops the capture goroutine's context.
 	cancelCapture context.CancelFunc
@@ -46,17 +72,20 @@ type inferencePipeline struct {
 }
 
 // newInferencePipeline creates a pipeline wired to the given source, store,
-// and publisher. It does NOT start the goroutine — call run().
+// and publisher. It does NOT start the goroutine — call run(). bus may be
+// nil; see the inferencePipeline.bus field doc.
 func newInferencePipeline(
 	src capture.CaptureSource,
 	recent *store.Recent,
 	publisher snapshotProjector,
+	bus *events.Bus,
 ) *inferencePipeline {
 	return &inferencePipeline{
 		src:       src,
 		recent:    recent,
 		publisher: publisher,
 		extractor: inference.NewExtractor(),
+		bus:       bus,
 		done:      make(chan struct{}),
 	}
 }
@@ -120,11 +149,52 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 	// clock (request -> completion).
 	reqTime := make(map[reassembly.FourTuple]time.Time)
 
+	// lastSeen records the most recent activity time per connection so idle
+	// connections can be evicted (bounding state growth) and stuck in-progress
+	// requests surfaced as cancelled. lastSweep throttles the sweep itself.
+	lastSeen := make(map[reassembly.FourTuple]time.Time)
+	var lastSweep time.Time
+
 	// idSeq is a monotonic counter feeding stable per-exchange ids.
 	idSeq := 0
 
 	// current is the running inference state emitted with every snapshot.
 	var current inference.Inference
+
+	// evictIdle drops bookkeeping for connections silent past
+	// captureIdleTimeout — bounding memory for connections whose FIN was never
+	// observed (dropped packets, ungraceful client exit). A connection whose
+	// request never completed is surfaced as a PhaseCancelled inference, with
+	// its observed time span preserved for the waterfall, so it does not hang
+	// "in progress" forever. Cancellations go to the recent ring (a full list
+	// in every snapshot), NOT through `current`, so a sweep that cancels
+	// several connections is not collapsed by the snapshot coalescer.
+	evictIdle := func(now time.Time) {
+		for key, seen := range lastSeen {
+			if now.Sub(seen) < captureIdleTimeout {
+				continue
+			}
+			// reqTime[key] is set on the request and deleted on completion, so
+			// its presence means this connection's request never completed.
+			if reqAt, pending := reqTime[key]; pending {
+				if req, ok := requestBuf[key]; ok {
+					if cancelled, ok := buildCancelledInference(p.extractor, req, reqID[key], reqAt, seen); ok {
+						p.recent.RecordInferenceCancellation(cancelled)
+						if p.bus != nil {
+							p.bus.Publish(events.Event{Topic: topicInferenceCompleted, Payload: cancelled})
+						}
+					}
+				}
+			}
+			delete(parsers, key)
+			delete(requestBuf, key)
+			delete(reqID, key)
+			delete(respAccum, key)
+			delete(reqTime, key)
+			delete(lastSeen, key)
+		}
+		reassembler.EvictIdle(now)
+	}
 
 	status := p.src.Status()
 	capLog("recvLoop start: active=%v elevated=%v reason=%q", status.Active, status.Elevated, status.Reason)
@@ -167,6 +237,7 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 			// reports the request (client→server) and response (server→client)
 			// with SWAPPED 4-tuples, so we canonicalise to pair them.
 			key := canonicalTuple(stream.Tuple)
+			lastSeen[key] = seg.At
 			cp, ok := parsers[key]
 			if !ok {
 				cp = &connParsers{req: httpx.NewParser(), resp: httpx.NewParser()}
@@ -244,11 +315,31 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					current = inf
 					if inf.Status == inference.PhaseCompleted {
 						p.recent.RecordInferenceCompletion(inf)
+						// Sibling durable-write trigger (design D7): the ring
+						// above serves the live dashboard projection; this
+						// publish feeds internal/persistence.Subscriber for
+						// cross-process durable storage. Bus.Publish is
+						// synchronous but the subscriber's handler only does a
+						// non-blocking channel send, so this never stalls the
+						// capture loop.
+						if p.bus != nil {
+							p.bus.Publish(events.Event{Topic: topicInferenceCompleted, Payload: inf})
+						}
 						delete(respAccum, key) // exchange done; release buffer
 						delete(reqTime, key)
 					}
 				}
 			}
+		}
+
+		// Periodically evict idle connections (bounding state) and surface any
+		// stuck in-progress request as cancelled. Driven by observed segment
+		// time so it costs nothing between sweeps.
+		if lastSweep.IsZero() {
+			lastSweep = seg.At
+		} else if seg.At.Sub(lastSweep) >= captureSweepInterval {
+			evictIdle(seg.At)
+			lastSweep = seg.At
 		}
 
 		// Build CaptureInput from live source status.
@@ -263,6 +354,41 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 			Capture:   captureInput,
 			Inference: inferenceState,
 		})
+	}
+}
+
+// buildCancelledInference derives a terminal "cancelled" inference for a
+// connection whose request was observed but never completed before the
+// connection went idle past the capture timeout. It reuses the extractor to
+// recover request-side metadata (model, endpoint, headers, body) then marks the
+// result PhaseCancelled and attaches the observed wall-clock span (request →
+// last activity) so the waterfall can still render the bar. Returns ok=false
+// for metadata-only requests (polls), which must not surface as cancelled rows.
+func buildCancelledInference(extractor *inference.Extractor, req httpx.Message, id string, reqAt, lastAt time.Time) (inference.Inference, bool) {
+	inf, ok := extractor.FromExchange(req, httpx.Message{})
+	if !ok || inf.Status == inference.PhaseMetadataOnly {
+		return inference.Inference{}, false
+	}
+	inf.ID = id
+	inf.At = reqAt
+	inf.Status = inference.PhaseCancelled
+	inf.Tokens = cancelledTiming(reqAt, lastAt)
+	return inf, true
+}
+
+// cancelledTiming returns the observed wall-clock span as a TokenStats carrying
+// ONLY duration/latency — eval/prompt counts and tokens/sec stay zero because
+// no tokens were ever measured. The span feeds the waterfall (TotalDuration →
+// totalMS); the absent counts stay honestly zero rather than fabricated.
+// Returns nil when the span is non-positive (same-instant edge case).
+func cancelledTiming(reqAt, lastAt time.Time) *inference.TokenStats {
+	elapsed := lastAt.Sub(reqAt)
+	if elapsed <= 0 {
+		return nil
+	}
+	return &inference.TokenStats{
+		TotalDuration: elapsed,
+		LatencyMS:     float64(elapsed) / 1e6,
 	}
 }
 

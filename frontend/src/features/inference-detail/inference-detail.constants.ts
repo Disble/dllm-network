@@ -1,4 +1,4 @@
-import { PHASE_COMPLETED, PHASE_IN_PROGRESS, PHASE_METADATA_ONLY } from '../../shared/contracts/dashboard-snapshot.types';
+import { PHASE_CANCELLED, PHASE_COMPLETED, PHASE_IN_PROGRESS, PHASE_METADATA_ONLY } from '../../shared/contracts/dashboard-snapshot.types';
 import type { InferenceDetailTabKey } from './inference-detail.types';
 
 /**
@@ -9,6 +9,7 @@ export const INFERENCE_DETAIL_STATUS_LABELS: Readonly<Record<number, string>> = 
   [PHASE_IN_PROGRESS]: 'in progress',
   [PHASE_COMPLETED]: 'completed',
   [PHASE_METADATA_ONLY]: 'metadata only',
+  [PHASE_CANCELLED]: 'cancelled',
 } as const;
 
 /** Sentinel for unavailable metric fields. */

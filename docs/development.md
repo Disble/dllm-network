@@ -18,8 +18,9 @@ Use Bun at the repository root for the normal validation flow.
 | `bun run test:go` | Runs project Go tests through `scripts/go-test-project.mjs`, using `go list ./...` and excluding `frontend/node_modules` package discovery noise. |
 | `bun run test` | Runs Go tests plus the frontend `test` script through a repository-root wrapper. |
 | `bun run lint` | Runs the frontend `lint` script through a repository-root wrapper. |
+| `bun run lint:go` | Runs `golangci-lint run ./...` through `scripts/go-lint-project.mjs`, enforcing the architecture boundaries documented in `docs/ARCHITECTURE.md` and `.golangci.yml`. |
 | `bun run typecheck` | Runs the frontend `typecheck` script through a repository-root wrapper. |
-| `bun run validate` | Runs the complete local validation flow: Go tests, frontend tests, lint, typecheck, and React Doctor. |
+| `bun run validate` | Runs the complete local validation flow: Go tests, Go lint, frontend tests, lint, typecheck, and React Doctor. |
 | `bun run doctor:react` | Runs the frontend `doctor:react` script through a repository-root wrapper. |
 
 ## Why Go validation uses a script

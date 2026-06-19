@@ -1,4 +1,4 @@
-import { PHASE_COMPLETED, PHASE_IN_PROGRESS, PHASE_METADATA_ONLY } from '../../shared/contracts/dashboard-snapshot.types';
+import { PHASE_CANCELLED, PHASE_COMPLETED, PHASE_IN_PROGRESS, PHASE_METADATA_ONLY } from '../../shared/contracts/dashboard-snapshot.types';
 import type { InferenceStatusFilter } from '../../shared/store/inference-store.types';
 
 /**
@@ -26,6 +26,7 @@ export const INFERENCE_STATUS_LABELS: Readonly<Record<number, string>> = {
   [PHASE_IN_PROGRESS]: 'in progress',
   [PHASE_COMPLETED]: 'completed',
   [PHASE_METADATA_ONLY]: 'metadata',
+  [PHASE_CANCELLED]: 'cancelled',
 } as const;
 
 /**
@@ -35,5 +36,6 @@ export const INFERENCE_STATUS_FILTER_OPTIONS: readonly { readonly value: Inferen
   { value: 'all', label: 'All' },
   { value: PHASE_COMPLETED, label: 'Completed' },
   { value: PHASE_IN_PROGRESS, label: 'In progress' },
+  { value: PHASE_CANCELLED, label: 'Cancelled' },
   { value: PHASE_METADATA_ONLY, label: 'Metadata' },
 ] as const;

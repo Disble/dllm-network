@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"ollama-telemetry/internal/store"
 )
 
 // TestRunStdio_DelegatesToServerRunWithGivenTransport proves the stdio
@@ -15,7 +17,7 @@ import (
 // transport here instead of real stdio so the test runs without spinning
 // up OS pipes.
 func TestRunStdio_DelegatesToServerRunWithGivenTransport(t *testing.T) {
-	reader := &fakeReader{modelsResult: []string{"llama3"}}
+	reader := &fakeReader{resolveResult: store.ResolveInferenceContextResult{SupportedFilters: []string{"model"}}}
 	srv := NewServer(reader)
 
 	clientTransport, serverTransport := mcp.NewInMemoryTransports()
@@ -33,11 +35,14 @@ func TestRunStdio_DelegatesToServerRunWithGivenTransport(t *testing.T) {
 	}
 	defer session.Close()
 
-	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_models", Arguments: map[string]any{}})
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "resolve_inference_context", Arguments: map[string]any{}})
 	if err != nil {
 		t.Fatalf("CallTool failed: %v", err)
 	}
 	if res.IsError {
 		t.Fatalf("tool call reported error: %+v", res.Content)
+	}
+	if reader.resolveCalls != 1 {
+		t.Fatalf("ResolveInferenceContext calls: got %d, want 1", reader.resolveCalls)
 	}
 }

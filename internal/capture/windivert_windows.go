@@ -230,8 +230,14 @@ func (w *windivertSource) Close() error {
 	}
 
 	if w.handle != windivertInvalidHandle {
-		if _, _, err := w.close.Call(w.handle); err != nil {
-			return fmt.Errorf("WinDivertClose failed: %w", err)
+		// WinDivertClose returns a BOOL — non-zero on success. The third
+		// syscall return is GetLastError, which is a non-nil syscall.Errno(0)
+		// ("The operation completed successfully") even on success, so gating on
+		// err != nil reports a false failure on every Close. Gate on the BOOL
+		// return instead — mirroring Open(), which checks its handle return
+		// value, not callErr.
+		if r, _, callErr := w.close.Call(w.handle); r == 0 {
+			return fmt.Errorf("WinDivertClose failed: %w", callErr)
 		}
 		w.handle = windivertInvalidHandle
 	}

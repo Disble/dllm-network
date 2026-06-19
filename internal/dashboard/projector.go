@@ -240,8 +240,36 @@ func normalizeActivityEvent(event activity.Event) activity.Event {
 func normalizeInferenceState(state InferenceState) InferenceState {
 	if state.Recent == nil {
 		state.Recent = []inference.Inference{}
+		return state
 	}
+
+	// Strip heavy bodies + headers from the recent LIST. The table only needs
+	// metadata (model, endpoint, status, code, tokens, promptSize); shipping up
+	// to N full request/response bodies (up to MaxBodyBytes each) on every emit
+	// is the dashboard payload's dominant cost over the Wails bridge. The detail
+	// view fetches a selected row's full record on demand via
+	// App.InferenceDetail (read from the durable store). Current is left intact
+	// so the live in-progress row still renders its body without a round trip.
+	stripped := make([]inference.Inference, len(state.Recent))
+	for i, inf := range state.Recent {
+		stripped[i] = stripInferenceBodies(inf)
+	}
+	state.Recent = stripped
 	return state
+}
+
+// stripInferenceBodies blanks the heavy detail fields (request/response bodies
+// and headers) while keeping all queryable/displayable metadata. The truncation
+// flags are reset too, since they describe a body that is no longer present;
+// the on-demand detail fetch carries the authoritative flags.
+func stripInferenceBodies(inf inference.Inference) inference.Inference {
+	inf.RequestBody = ""
+	inf.RequestBodyTruncated = false
+	inf.ResponseBody = ""
+	inf.ResponseBodyTruncated = false
+	inf.RequestHeaders = nil
+	inf.ResponseHeaders = nil
+	return inf
 }
 
 func normalizePassiveLimitMode(mode PassiveLimitMode) PassiveLimitMode {

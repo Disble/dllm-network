@@ -13,6 +13,7 @@ import (
 	"ollama-telemetry/internal/persistence"
 	"ollama-telemetry/internal/store"
 	"ollama-telemetry/internal/telemetry"
+	"ollama-telemetry/internal/telemetry/inference"
 	"ollama-telemetry/internal/telemetry/ollama"
 	"ollama-telemetry/internal/telemetry/orchestrator"
 	"ollama-telemetry/internal/tray"
@@ -105,6 +106,13 @@ type App struct {
 	persistenceWriter  persistence.Writer
 	useProductionStore bool
 	persistence        *persistenceLifecycle
+
+	// inferenceReader is the read-side handle backing the on-demand
+	// InferenceDetail binding. It is the same durable store the persistence
+	// writer wraps (the production *sqlite.Store implements both ports), set in
+	// Startup once the writer is resolved. Nil when persistence is unavailable,
+	// in which case the binding returns the zero value.
+	inferenceReader store.InferenceReader
 }
 
 // newProductionStore is a package-level func-var seam mirroring
@@ -247,6 +255,16 @@ func (app *App) Startup(ctx context.Context) {
 		}
 	}
 
+	// Expose a read-side handle for the on-demand inference-detail binding when
+	// the resolved writer also supports reads (the production *sqlite.Store
+	// does — it implements both ports). The GUI's single WAL connection reads
+	// its own writes, so no second connection is needed.
+	if reader, ok := writer.(store.InferenceReader); ok {
+		app.mu.Lock()
+		app.inferenceReader = reader
+		app.mu.Unlock()
+	}
+
 	// Start the persistence subscriber's drain loop (design D7). Mirrors the
 	// capture pipeline's run/stop lifecycle: started here, stopped in Quit.
 	var persistenceLC *persistenceLifecycle
@@ -363,6 +381,31 @@ func (app *App) Status() Status {
 // Health exposes a placeholder binding for later runtime slices.
 func (app *App) Health() string {
 	return "runtime-shell-ready"
+}
+
+// InferenceDetail returns the full stored inference record (request/response
+// bodies and headers included) for id, fetched on demand from the durable
+// store. The high-frequency dashboard snapshot ships only metadata for the
+// recent list; the detail view calls this when a row is selected — mirroring
+// how Chrome DevTools lazily loads a request's body rather than holding every
+// body in memory. Returns the zero value (empty id) when persistence is
+// unavailable or id is unknown; the frontend then falls back to the live
+// snapshot event (which still carries the in-progress body).
+func (app *App) InferenceDetail(id string) (inference.Inference, error) {
+	app.mu.RLock()
+	reader := app.inferenceReader
+	ctx := app.operationContext()
+	app.mu.RUnlock()
+
+	if reader == nil {
+		return inference.Inference{}, nil
+	}
+
+	inf, _, err := reader.Get(ctx, id)
+	if err != nil {
+		return inference.Inference{}, err
+	}
+	return inf, nil
 }
 
 func (app *App) operationContext() context.Context {

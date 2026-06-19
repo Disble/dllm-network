@@ -57,6 +57,18 @@ type InferenceWriter interface {
 // in-memory Recent ring, which stays a separate, uncoupled projection — see
 // design D5's rationale.
 type InferenceReader interface {
+	// ResolveInferenceContext returns lightweight discovery data for the stored
+	// inference universe, without bodies or per-event detail.
+	ResolveInferenceContext(ctx context.Context) (ResolveInferenceContextResult, error)
+
+	// SearchInferences returns lightweight summaries ordered newest-first using
+	// a stable total ordering and an opaque cursor.
+	SearchInferences(ctx context.Context, query SearchInferencesQuery) (SearchInferencesResult, error)
+
+	// GetInferenceContext returns one selected inference's bounded context.
+	// PR1 only relies on the method contract; PR2 deepens the implementation.
+	GetInferenceContext(ctx context.Context, query GetInferenceContextQuery) (GetInferenceContextResult, bool, error)
+
 	// Query lists inferences matching filter, most-recent-first, capped at
 	// filter.Limit (when > 0). Returns an empty, non-nil slice (not an
 	// error) when nothing matches.

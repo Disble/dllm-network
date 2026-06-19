@@ -12,6 +12,15 @@ import (
 // store. Each method records the arguments it was called with so tests can
 // assert the handler translated its typed input into the correct Filter/id.
 type fakeReader struct {
+	resolveResult store.ResolveInferenceContextResult
+	resolveErr    error
+	resolveCalls  int
+
+	searchResult    store.SearchInferencesResult
+	searchErr       error
+	lastSearchQuery store.SearchInferencesQuery
+	searchCalls     int
+
 	queryResult []inference.Inference
 	queryErr    error
 	lastFilter  store.Filter
@@ -31,6 +40,23 @@ type fakeReader struct {
 	modelsResult []string
 	modelsErr    error
 	modelsCalls  int
+
+	getContextResult store.GetInferenceContextResult
+	getContextOK     bool
+	getContextErr    error
+	lastContextQuery store.GetInferenceContextQuery
+	getContextCalls  int
+}
+
+func (f *fakeReader) ResolveInferenceContext(_ context.Context) (store.ResolveInferenceContextResult, error) {
+	f.resolveCalls++
+	return f.resolveResult, f.resolveErr
+}
+
+func (f *fakeReader) SearchInferences(_ context.Context, query store.SearchInferencesQuery) (store.SearchInferencesResult, error) {
+	f.lastSearchQuery = query
+	f.searchCalls++
+	return f.searchResult, f.searchErr
 }
 
 func (f *fakeReader) Query(_ context.Context, filter store.Filter) ([]inference.Inference, error) {
@@ -54,6 +80,12 @@ func (f *fakeReader) Stats(_ context.Context, filter store.Filter) (store.Stats,
 func (f *fakeReader) Models(_ context.Context) ([]string, error) {
 	f.modelsCalls++
 	return f.modelsResult, f.modelsErr
+}
+
+func (f *fakeReader) GetInferenceContext(_ context.Context, query store.GetInferenceContextQuery) (store.GetInferenceContextResult, bool, error) {
+	f.lastContextQuery = query
+	f.getContextCalls++
+	return f.getContextResult, f.getContextOK, f.getContextErr
 }
 
 var _ store.InferenceReader = (*fakeReader)(nil)

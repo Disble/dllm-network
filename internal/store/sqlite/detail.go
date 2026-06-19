@@ -93,7 +93,7 @@ func (s *Store) GetInferenceContext(ctx context.Context, query store.GetInferenc
 				Model:      inf.Model,
 				Endpoint:   inf.Endpoint,
 				Method:     inf.Method,
-				Status:     sqlitePhaseLabel(inf.Status),
+				Status:     store.InferenceStatusLabel(inf.Status),
 				StatusCode: inf.StatusCode,
 				Streaming:  inf.Streaming,
 				PromptSize: inf.PromptSize,

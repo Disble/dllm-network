@@ -16,6 +16,18 @@ import (
 // test suite).
 type fakeReader struct{}
 
+func (fakeReader) ResolveInferenceContext(context.Context) (store.ResolveInferenceContextResult, error) {
+	return store.ResolveInferenceContextResult{}, nil
+}
+
+func (fakeReader) SearchInferences(context.Context, store.SearchInferencesQuery) (store.SearchInferencesResult, error) {
+	return store.SearchInferencesResult{}, nil
+}
+
+func (fakeReader) GetInferenceContext(context.Context, store.GetInferenceContextQuery) (store.GetInferenceContextResult, bool, error) {
+	return store.GetInferenceContextResult{}, false, nil
+}
+
 func (fakeReader) Query(context.Context, store.Filter) ([]inference.Inference, error) {
 	return nil, nil
 }

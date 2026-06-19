@@ -573,6 +573,75 @@ func TestCapturePipeline_OpenAITTFTSplitsTiming(t *testing.T) {
 	}
 }
 
+// TestCapturePipeline_InProgressAtStaysStableAcrossChunks guards the flicker fix:
+// the in-progress row's At is the START time the frontend measures live elapsed
+// against (now - At). The extractor stamps At=time.Now() on EVERY call, so for a
+// stream the pipeline MUST pin At to the request observation time — otherwise each
+// streamed chunk resets the elapsed to ~0 and the latency/waterfall cells flicker
+// between a value and the "unavailable" em-dash. Every in-progress snapshot for
+// the request must report the request's observed time, regardless of when each
+// chunk arrived.
+func TestCapturePipeline_InProgressAtStaysStableAcrossChunks(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	header := "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n"
+	contentSSE := `data: {"object":"chat.completion.chunk","model":"gemma4:12b","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}` + "\n\n"
+	doneSSE := "data: [DONE]\n\n"
+	chunk := func(s string) string { return itohex(len(s)) + "\r\n" + s + "\r\n" }
+
+	// In-progress content chunk and the terminal [DONE] arrive in SEPARATE
+	// segments, observed well AFTER the request.
+	partA := []byte(header + chunk(contentSSE))
+	partB := []byte(chunk(doneSSE) + "0\r\n\r\n")
+
+	baseTime := time.Now()
+	tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+	segments := []capture.Segment{
+		{Tuple: tuple, Dir: capture.DirToServer, Payload: buildFakeOpenAIRequest(), SeqNo: 0, At: baseTime},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: partA, SeqNo: 0, At: baseTime.Add(30 * time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: partB, SeqNo: uint32(len(partA)), At: baseTime.Add(60 * time.Millisecond)},
+	}
+
+	var emitted []dashboard.Snapshot
+	emitFn := func(ctx context.Context, event string, payload ...any) {
+		if event == dashboard.TopicDashboardSnapshot {
+			if snap, ok := payload[0].(dashboard.Snapshot); ok {
+				emitted = append(emitted, snap)
+			}
+		}
+	}
+
+	app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	// Wait until the exchange completes so every in-progress emission has happened.
+	if _, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+		cur := snap.Inference.Current
+		return cur.Endpoint == "/v1/chat/completions" && cur.Status == inference.PhaseCompleted
+	}); !found {
+		t.Fatalf("no completed /v1/chat/completions inference; got %d snapshots", len(emitted))
+	}
+
+	sawInProgress := false
+	for _, snap := range emitted {
+		cur := snap.Inference.Current
+		if cur.Endpoint != "/v1/chat/completions" || cur.Status != inference.PhaseInProgress {
+			continue
+		}
+		sawInProgress = true
+		if !cur.At.Equal(baseTime) {
+			t.Errorf("in-progress At must equal the request observation time %v (stable across chunks); got %v", baseTime, cur.At)
+		}
+	}
+	if !sawInProgress {
+		t.Fatal("expected at least one in-progress snapshot for /v1/chat/completions")
+	}
+}
+
 // TestInferenceID_UniqueAcrossRuns guards against the stale-detail bug: ids must
 // be unique ACROSS process runs, because the durable SQLite store persists them
 // and App.InferenceDetail looks records up by id. A per-run counter alone (seq

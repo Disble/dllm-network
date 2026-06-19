@@ -280,6 +280,11 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 						// overwrite the displayed inference.
 						if inProgress, ok := p.extractor.FromExchange(m, httpx.Message{}); ok && inProgress.Status != inference.PhaseMetadataOnly {
 							inProgress.ID = reqID[key]
+							// Stamp the request observation time, not the extractor's
+							// per-call time.Now(): the in-progress row's At is the START
+							// the frontend measures live elapsed against. It MUST stay
+							// stable for the request's lifetime (see the response path).
+							inProgress.At = reqTime[key]
 							current = inProgress
 						}
 					}
@@ -324,6 +329,15 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					// Stable id (shared across in-progress/completed) + assembled
 					// response body override the per-line extractor values.
 					inf.ID = reqID[key]
+					// Pin the in-progress row's At to the request observation time.
+					// The extractor stamps At=time.Now() on EVERY chunk, so without
+					// this the frontend's live elapsed (now - At) resets to ~0 on each
+					// streamed chunk — making the latency and waterfall cells flicker
+					// between a value and the "unavailable" em-dash. Completed rows keep
+					// the extractor's completion timestamp.
+					if inf.Status != inference.PhaseCompleted {
+						inf.At = reqTime[key]
+					}
 					inf.ResponseBody, inf.ResponseBodyTruncated = inference.TruncateBody(respAccum[key])
 					// Derive the normalized generation (assembled output text,
 					// reasoning, finish reason, context) from the FULL assembled

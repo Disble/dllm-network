@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"time"
 
 	"ollama-telemetry/internal/telemetry/inference"
@@ -14,6 +15,23 @@ const defaultInferenceContextBodyLimit = 4096
 // staged MCP discovery/search flow.
 func SupportedInferenceFilters() []string {
 	return append([]string(nil), supportedInferenceFilters...)
+}
+
+// InferenceStatusLabel converts the domain phase enum into the stable wire
+// labels used by the staged MCP contract and read-side DTOs.
+func InferenceStatusLabel(phase inference.Phase) string {
+	switch phase {
+	case inference.PhaseInProgress:
+		return "in_progress"
+	case inference.PhaseCompleted:
+		return "completed"
+	case inference.PhaseMetadataOnly:
+		return "metadata_only"
+	case inference.PhaseCancelled:
+		return "cancelled"
+	default:
+		return fmt.Sprintf("phase_%d", phase)
+	}
 }
 
 type FacetCount struct {

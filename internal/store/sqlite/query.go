@@ -177,7 +177,7 @@ func (s *Store) resolveStatusCounts(ctx context.Context) ([]store.FacetCount, er
 		if err := rows.Scan(&statusValue, &count); err != nil {
 			return nil, fmt.Errorf("sqlite: resolve statuses scan: %w", err)
 		}
-		counts = append(counts, store.FacetCount{Value: sqlitePhaseLabel(inference.Phase(statusValue)), Count: count})
+		counts = append(counts, store.FacetCount{Value: store.InferenceStatusLabel(inference.Phase(statusValue)), Count: count})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("sqlite: resolve statuses rows: %w", err)
@@ -232,7 +232,7 @@ func searchCursorStatus(status *inference.Phase) string {
 	if status == nil {
 		return ""
 	}
-	return sqlitePhaseLabel(*status)
+	return store.InferenceStatusLabel(*status)
 }
 
 func encodeSearchCursor(payload searchCursorPayload) (string, error) {
@@ -288,26 +288,11 @@ func scanInferenceSummary(r row) (store.InferenceSummary, error) {
 		Model:      model,
 		Endpoint:   endpoint,
 		Method:     method,
-		Status:     sqlitePhaseLabel(inference.Phase(status)),
+		Status:     store.InferenceStatusLabel(inference.Phase(status)),
 		StatusCode: statusCode,
 		Streaming:  streamingInt != 0,
 		PromptSize: promptSize,
 	}, nil
-}
-
-func sqlitePhaseLabel(phase inference.Phase) string {
-	switch phase {
-	case inference.PhaseInProgress:
-		return "in_progress"
-	case inference.PhaseCompleted:
-		return "completed"
-	case inference.PhaseMetadataOnly:
-		return "metadata_only"
-	case inference.PhaseCancelled:
-		return "cancelled"
-	default:
-		return fmt.Sprintf("phase_%d", phase)
-	}
 }
 
 func nanosToTimePtr(value *int64) *time.Time {

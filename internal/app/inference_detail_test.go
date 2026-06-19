@@ -21,6 +21,15 @@ func (f *fakeInferenceReader) Get(_ context.Context, id string) (inference.Infer
 	f.gotID = id
 	return f.inf, f.ok, nil
 }
+func (f *fakeInferenceReader) ResolveInferenceContext(context.Context) (store.ResolveInferenceContextResult, error) {
+	return store.ResolveInferenceContextResult{}, nil
+}
+func (f *fakeInferenceReader) SearchInferences(context.Context, store.SearchInferencesQuery) (store.SearchInferencesResult, error) {
+	return store.SearchInferencesResult{}, nil
+}
+func (f *fakeInferenceReader) GetInferenceContext(context.Context, store.GetInferenceContextQuery) (store.GetInferenceContextResult, bool, error) {
+	return store.GetInferenceContextResult{}, false, nil
+}
 func (f *fakeInferenceReader) Query(context.Context, store.Filter) ([]inference.Inference, error) {
 	return nil, nil
 }

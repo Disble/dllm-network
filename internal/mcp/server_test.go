@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -62,6 +63,16 @@ func TestNewServer_RegistersExactThreeToolsAndNoResources(t *testing.T) {
 	for name, found := range wantTools {
 		if !found {
 			t.Errorf("tool %q was not registered", name)
+		}
+	}
+
+	gotToolNames := make([]string, 0, len(tools.Tools))
+	for _, tool := range tools.Tools {
+		gotToolNames = append(gotToolNames, tool.Name)
+	}
+	for _, removedName := range []string{"query_inferences", "get_inference", "get_stats", "list_models"} {
+		if slices.Contains(gotToolNames, removedName) {
+			t.Fatalf("legacy tool %q must not be advertised", removedName)
 		}
 	}
 

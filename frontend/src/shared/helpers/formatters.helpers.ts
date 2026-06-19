@@ -1,5 +1,37 @@
+/** pad2 left-pads a number to two digits ("9" → "09"). */
+function pad2(value: number): string {
+  return String(value).padStart(2, '0');
+}
+
 /**
- * formatTimestamp renders a stable timestamp or fallback label for passive telemetry surfaces.
+ * formatLocalOffset renders the date's offset from UTC in the host's local zone
+ * as "±HH:MM" (e.g. "-05:00"). getTimezoneOffset returns the minutes to ADD to
+ * local time to reach UTC, so its sign is inverted from the ISO convention: a
+ * positive offset (behind UTC) renders with a leading "-". We surface this
+ * explicitly instead of "Z" so a local time is never mislabelled as UTC.
+ */
+function formatLocalOffset(date: Date): string {
+  const offsetMinutes = date.getTimezoneOffset();
+  const sign = offsetMinutes > 0 ? '-' : '+';
+  const abs = Math.abs(offsetMinutes);
+  return `${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`;
+}
+
+/**
+ * localDateParts renders the calendar date ("YYYY-MM-DD") and wall-clock time
+ * ("HH:MM:SS") in the HOST'S local time zone — the user's computer clock — from
+ * an absolute instant. The Date already holds the correct instant regardless of
+ * whether the source carried "Z" or an explicit offset.
+ */
+function localDateParts(date: Date): { date: string; time: string } {
+  const ymd = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+  const hms = `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+  return { date: ymd, time: hms };
+}
+
+/**
+ * formatTimestamp renders a stable timestamp or fallback label for passive
+ * telemetry surfaces, in the host's local time with an explicit "±HH:MM" offset.
  */
 export function formatTimestamp(value: string): string {
   if (value === '') {
@@ -11,12 +43,15 @@ export function formatTimestamp(value: string): string {
     return 'Unavailable';
   }
 
-  return date.toISOString().replace('.000Z', 'Z');
+  const { date: ymd, time } = localDateParts(date);
+  return `${ymd} ${time} ${formatLocalOffset(date)}`;
 }
 
 /**
- * formatClockTime renders just the wall-clock HH:MM:SS (UTC) from an RFC3339
- * timestamp for dense table columns. Returns "—" when empty or unparseable.
+ * formatClockTime renders just the wall-clock HH:MM:SS in the host's LOCAL time
+ * from an RFC3339 timestamp for dense table columns. The offset is omitted here
+ * because the column is space-constrained and every row shares the same zone.
+ * Returns "—" when empty or unparseable.
  */
 export function formatClockTime(value: string): string {
   if (value === '') {
@@ -28,13 +63,13 @@ export function formatClockTime(value: string): string {
     return '—';
   }
 
-  return date.toISOString().slice(11, 19);
+  return localDateParts(date).time;
 }
 
 /**
- * formatClockDateTime renders an RFC3339 timestamp as "YYYY-MM-DD HH:MM:SSZ"
- * (UTC, no milliseconds) for compact telemetry tiles. Returns "—" when empty
- * or unparseable.
+ * formatClockDateTime renders an RFC3339 timestamp as "YYYY-MM-DD HH:MM:SS ±HH:MM"
+ * in the host's LOCAL time (no milliseconds) for compact telemetry tiles. Returns
+ * "—" when empty or unparseable.
  */
 export function formatClockDateTime(value: string): string {
   if (value === '') {
@@ -46,8 +81,8 @@ export function formatClockDateTime(value: string): string {
     return '—';
   }
 
-  const iso = date.toISOString();
-  return `${iso.slice(0, 10)} ${iso.slice(11, 19)}Z`;
+  const { date: ymd, time } = localDateParts(date);
+  return `${ymd} ${time} ${formatLocalOffset(date)}`;
 }
 
 /**

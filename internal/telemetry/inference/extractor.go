@@ -147,11 +147,32 @@ func ExtractOpenAIStats(body []byte) *TokenStats {
 	return nil
 }
 
-// MaxBodyBytes caps how many bytes of a request/response body are retained.
-// Prompts and generated text can be large; capturing them unbounded for every
-// retained event would blow up memory. Bodies longer than this are truncated
-// and flagged via the *Truncated fields (R6 bounded retention).
-const MaxBodyBytes = 64 * 1024
+// MaxBodyBytes is the SAFETY CEILING for how many bytes of a request/response
+// body are retained — NOT a data-minimization cap.
+//
+// Design decision (2026-06-18): raised from 64 KiB to 16 MiB so that real
+// Ollama exchanges are captured in full. This tool is a network-clone inspector
+// for Ollama: the whole point is to SEE the complete prompt and generated
+// output. A 64 KiB cap truncated long chats, generated code, and reasoning
+// traces mid-stream, which also broke the detail view's JSON/NDJSON pretty-
+// printer (a body cut at an arbitrary byte is no longer valid to parse).
+//
+// Why a ceiling still exists (do NOT remove it):
+//   - Backend memory is already bounded: store.Recent keeps only
+//     defaultRecentModelLimit (12) completed inferences, so worst-case retention
+//     is ~12 × (request + response) bodies. At 16 MiB that is a comfortable
+//     upper bound for a local single-user tool.
+//   - The REAL hang risk is the FRONTEND, not Go. The detail inspector renders
+//     the body in a <pre> and runs JSON.parse + pretty-print on the webview's
+//     main thread (see inference-detail-code-block.tsx). A pathological payload
+//     of tens/hundreds of MiB (e.g. a huge embeddings batch) would freeze the
+//     render, not the capture pipeline. The ceiling protects that path.
+//
+// If you ever see "Truncated at capture limit." on a legitimate response, it is
+// safe to raise this value — backend memory scales linearly and stays bounded
+// by the 12-event retention. Re-evaluate the frontend render cost before going
+// far past ~16 MiB.
+const MaxBodyBytes = 16 * 1024 * 1024
 
 // TruncateBody returns the body as a string capped at MaxBodyBytes, and whether
 // truncation occurred. A nil/empty body returns ("", false).

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"sync"
 	"time"
@@ -13,7 +14,6 @@ import (
 	"ollama-telemetry/internal/persistence"
 	"ollama-telemetry/internal/store"
 	"ollama-telemetry/internal/telemetry"
-	"ollama-telemetry/internal/telemetry/inference"
 	"ollama-telemetry/internal/telemetry/ollama"
 	"ollama-telemetry/internal/telemetry/orchestrator"
 	"ollama-telemetry/internal/tray"
@@ -384,28 +384,43 @@ func (app *App) Health() string {
 }
 
 // InferenceDetail returns the full stored inference record (request/response
-// bodies and headers included) for id, fetched on demand from the durable
-// store. The high-frequency dashboard snapshot ships only metadata for the
-// recent list; the detail view calls this when a row is selected — mirroring
-// how Chrome DevTools lazily loads a request's body rather than holding every
-// body in memory. Returns the zero value (empty id) when persistence is
+// bodies and headers included) for id as a JSON string, fetched on demand from
+// the durable store. The high-frequency dashboard snapshot ships only metadata
+// for the recent list; the detail view calls this when a row is selected —
+// mirroring how Chrome DevTools lazily loads a request's body rather than
+// holding every body in memory.
+//
+// It returns JSON (not the inference.Inference value) on purpose: Wails
+// generates a TypeScript model for every bound method's return type, and the
+// domain type's time.Time / time.Duration fields are not mappable by that
+// generator ("Not found: time.Time"). Marshalling here yields the exact same
+// wire shape the snapshot already emits, and the frontend parses it into its
+// hand-written InferenceEvent contract. Returns "" when persistence is
 // unavailable or id is unknown; the frontend then falls back to the live
 // snapshot event (which still carries the in-progress body).
-func (app *App) InferenceDetail(id string) (inference.Inference, error) {
+func (app *App) InferenceDetail(id string) (string, error) {
 	app.mu.RLock()
 	reader := app.inferenceReader
 	ctx := app.operationContext()
 	app.mu.RUnlock()
 
 	if reader == nil {
-		return inference.Inference{}, nil
+		return "", nil
 	}
 
-	inf, _, err := reader.Get(ctx, id)
+	inf, ok, err := reader.Get(ctx, id)
 	if err != nil {
-		return inference.Inference{}, err
+		return "", err
 	}
-	return inf, nil
+	if !ok {
+		return "", nil
+	}
+
+	data, err := json.Marshal(inf)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func (app *App) operationContext() context.Context {

@@ -14,9 +14,11 @@ export interface InferenceDetailSource {
 }
 
 // InferenceDetailBinding is the Wails-generated App.InferenceDetail method shape,
-// injected on window.go inside the desktop webview.
+// injected on window.go inside the desktop webview. It returns the record as a
+// JSON STRING (the Go binding marshals it; the domain type's time.Time fields
+// are not mappable by Wails' TS model generator), or "" when there is no record.
 // eslint-disable-next-line no-unused-vars -- Function-type param documents the Wails binding contract.
-type InferenceDetailBinding = (id: string) => Promise<InferenceEvent>;
+type InferenceDetailBinding = (id: string) => Promise<string>;
 
 /**
  * createInferenceDetailSource returns the runtime-backed detail source. It calls
@@ -42,10 +44,14 @@ export function createInferenceDetailSource(): InferenceDetailSource {
       }
 
       try {
-        const record = await binding(id);
-        // The backend returns the zero value (empty id) for an unknown id or
-        // when persistence is unavailable; treat that as "no detail".
-        return record && record.id ? record : null;
+        // The backend returns "" for an unknown id or when persistence is
+        // unavailable; treat that as "no detail".
+        const json = await binding(id);
+        if (!json) {
+          return null;
+        }
+        const record = JSON.parse(json) as InferenceEvent;
+        return record.id ? record : null;
       } catch {
         return null;
       }

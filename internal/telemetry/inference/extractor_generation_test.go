@@ -168,6 +168,152 @@ func TestExtractGeneration_ContextPreviewBounded(t *testing.T) {
 	}
 }
 
+func TestGenerationAccumulator(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		endpoint  string
+		chunks    []string
+		wantSteps []*Generation
+		wantFinal *Generation
+	}{
+		{
+			name:     "ollama generate grows output and finishes with context summary",
+			endpoint: "/api/generate",
+			chunks: []string{
+				`{"model":"gemma4:12b","response":"Hola","done":false}`,
+				`{"model":"gemma4:12b","response":" mundo","done":false}`,
+				`{"model":"gemma4:12b","response":"","done":true,"done_reason":"stop","context":[1,2,3,4,5,6,7,8]}`,
+			},
+			wantSteps: []*Generation{
+				{Output: "Hola"},
+				{Output: "Hola mundo"},
+				{Output: "Hola mundo", FinishReason: "stop", ContextSize: 8, ContextPreview: []int{1, 2, 3, 4, 5, 6}},
+			},
+			wantFinal: &Generation{Output: "Hola mundo", FinishReason: "stop", ContextSize: 8, ContextPreview: []int{1, 2, 3, 4, 5, 6}},
+		},
+		{
+			name:     "ollama chat grows output and reasoning incrementally",
+			endpoint: "/api/chat",
+			chunks: []string{
+				`{"message":{"role":"assistant","content":"Hi","thinking":"pondering "},"done":false}`,
+				`{"message":{"role":"assistant","content":"there","thinking":"done"},"done":true,"done_reason":"stop"}`,
+			},
+			wantSteps: []*Generation{
+				{Output: "Hi", Reasoning: "pondering "},
+				{Output: "Hithere", Reasoning: "pondering done", FinishReason: "stop"},
+			},
+			wantFinal: &Generation{Output: "Hithere", Reasoning: "pondering done", FinishReason: "stop"},
+		},
+		{
+			name:     "openai sparse deltas grow content and finish later",
+			endpoint: "/v1/chat/completions",
+			chunks: []string{
+				`{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning":"The "}}]}`,
+				`{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"}}]}`,
+				`{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+				`[DONE]`,
+			},
+			wantSteps: []*Generation{
+				{Reasoning: "The "},
+				{Output: "Hi", Reasoning: "The "},
+				{Output: "Hi", Reasoning: "The ", FinishReason: "stop"},
+				{Output: "Hi", Reasoning: "The ", FinishReason: "stop"},
+			},
+			wantFinal: &Generation{Output: "Hi", Reasoning: "The ", FinishReason: "stop"},
+		},
+		{
+			name:     "openai tool call fragments merge by index and preserve order",
+			endpoint: "/v1/chat/completions",
+			chunks: []string{
+				`{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":1,"function":{"name":"second","arguments":"{\"b\":"}},{"index":0,"function":{"name":"first","arguments":"{\"a\":"}}]}}]}`,
+				`{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1}"}},{"index":1,"function":{"arguments":"2}"}}]},"finish_reason":"tool_calls"}]}`,
+			},
+			wantSteps: []*Generation{
+				{ToolCalls: []ToolCall{{Name: "second", Arguments: `{"b":`}, {Name: "first", Arguments: `{"a":`}}},
+				{FinishReason: "tool_calls", ToolCalls: []ToolCall{{Name: "second", Arguments: `{"b":2}`}, {Name: "first", Arguments: `{"a":1}`}}},
+			},
+			wantFinal: &Generation{FinishReason: "tool_calls", ToolCalls: []ToolCall{{Name: "second", Arguments: `{"b":2}`}, {Name: "first", Arguments: `{"a":1}`}}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			acc := NewGenerationAccumulator(tt.endpoint)
+			for i, chunk := range tt.chunks {
+				acc.Feed([]byte(chunk))
+				if got := acc.Build(); !reflect.DeepEqual(got, tt.wantSteps[i]) {
+					t.Fatalf("step %d Build() =\n  %+v\nwant\n  %+v", i+1, got, tt.wantSteps[i])
+				}
+			}
+
+			if got := acc.Build(); !reflect.DeepEqual(got, tt.wantFinal) {
+				t.Fatalf("final Build() =\n  %+v\nwant\n  %+v", got, tt.wantFinal)
+			}
+		})
+	}
+}
+
+func TestGenerationAccumulator_FinalMatchesExtractGeneration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		endpoint string
+		chunks   []string
+		body     string
+	}{
+		{
+			name:     "ollama generate parity",
+			endpoint: "/api/generate",
+			chunks: []string{
+				`{"model":"gemma4:12b","response":"Hola","done":false}`,
+				`{"model":"gemma4:12b","response":" mundo","done":false}`,
+				`{"model":"gemma4:12b","response":"","done":true,"done_reason":"stop","context":[1,2,3,4,5,6,7,8]}`,
+			},
+			body: `{"model":"gemma4:12b","response":"Hola","done":false}` + "\n" +
+				`{"model":"gemma4:12b","response":" mundo","done":false}` + "\n" +
+				`{"model":"gemma4:12b","response":"","done":true,"done_reason":"stop","context":[1,2,3,4,5,6,7,8]}` + "\n",
+		},
+		{
+			name:     "openai streaming parity",
+			endpoint: "/v1/chat/completions",
+			chunks: []string{
+				`{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning":"The "}}]}`,
+				`{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"}}]}`,
+				`{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"run","arguments":"{\"cmd\":"}}]}}]}`,
+				`{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"dir\"}"}}]},"finish_reason":"tool_calls"}]}`,
+				`[DONE]`,
+			},
+			body: "data: " + `{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"reasoning":"The "}}]}` + "\n" +
+				"data: " + `{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"content":"Hi"}}]}` + "\n" +
+				"data: " + `{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"name":"run","arguments":"{\"cmd\":"}}]}}]}` + "\n" +
+				"data: " + `{"object":"chat.completion.chunk","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"dir\"}"}}]},"finish_reason":"tool_calls"}]}` + "\n" +
+				"data: [DONE]\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			acc := NewGenerationAccumulator(tt.endpoint)
+			for _, chunk := range tt.chunks {
+				acc.Feed([]byte(chunk))
+			}
+
+			got := acc.Build()
+			want := ExtractGeneration(tt.endpoint, []byte(tt.body))
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("Build() =\n  %+v\nExtractGeneration() want\n  %+v", got, want)
+			}
+		})
+	}
+}
+
 // intsJSON renders an []int as a JSON array literal for fixture bodies.
 func intsJSON(xs []int) string {
 	parts := make([]string, len(xs))

@@ -11,6 +11,67 @@ import (
 // (often thousands-long) KV-cache handle array.
 const contextPreviewLimit = 6
 
+type generationKind int
+
+const (
+	generationKindUnknown generationKind = iota
+	generationKindOpenAI
+	generationKindOllama
+)
+
+// GenerationAccumulator incrementally builds a normalized Generation snapshot
+// from one provider-specific response payload at a time.
+type GenerationAccumulator struct {
+	kind generationKind
+
+	output    strings.Builder
+	reasoning strings.Builder
+	finish    string
+	context   []int
+	found     bool
+
+	toolByKey map[int]*ToolCall
+	toolOrder []int
+}
+
+// NewGenerationAccumulator creates an endpoint-aware accumulator that accepts
+// one response body payload at a time.
+func NewGenerationAccumulator(endpoint string) *GenerationAccumulator {
+	a := &GenerationAccumulator{kind: classifyGenerationEndpoint(endpoint)}
+	if a.kind == generationKindOpenAI {
+		a.toolByKey = make(map[int]*ToolCall)
+	}
+	return a
+}
+
+// Feed merges one response body payload into the accumulator state. The payload
+// can be a single streamed chunk or an assembled response body.
+func (a *GenerationAccumulator) Feed(body []byte) {
+	if a == nil || len(bytes.TrimSpace(body)) == 0 {
+		return
+	}
+
+	switch a.kind {
+	case generationKindOpenAI:
+		for _, raw := range bytes.Split(body, []byte("\n")) {
+			a.feedOpenAILine(raw)
+		}
+	case generationKindOllama:
+		for _, raw := range bytes.Split(body, []byte("\n")) {
+			a.feedOllamaLine(raw)
+		}
+	}
+}
+
+// Build returns the current normalized snapshot. Nil means no decodable
+// generation data has been observed yet.
+func (a *GenerationAccumulator) Build() *Generation {
+	if a == nil {
+		return nil
+	}
+	return buildGeneration(a.found, a.output.String(), a.reasoning.String(), a.finish, a.context, a.buildToolCalls())
+}
+
 // ExtractGeneration derives the normalized generated content from an assembled
 // response body, discriminating the provider purely by endpoint. It is the
 // SINGLE place in the system that understands an LLM response wire format:
@@ -23,18 +84,9 @@ const contextPreviewLimit = 6
 // reassembled here. Returns nil — never a fabricated value — for metadata-only
 // endpoints, empty bodies, or bodies carrying no decodable content.
 func ExtractGeneration(endpoint string, body []byte) *Generation {
-	if len(bytes.TrimSpace(body)) == 0 {
-		return nil
-	}
-
-	switch {
-	case openaiEndpoints[endpoint]:
-		return extractOpenAIGeneration(body)
-	case inferenceEndpoints[endpoint]:
-		return extractOllamaGeneration(body)
-	default:
-		return nil
-	}
+	acc := NewGenerationAccumulator(endpoint)
+	acc.Feed(body)
+	return acc.Build()
 }
 
 // HasGeneratedContent reports whether a SINGLE response chunk/line carries
@@ -48,19 +100,13 @@ func HasGeneratedContent(endpoint string, body []byte) bool {
 	return g != nil && (g.Output != "" || g.Reasoning != "" || len(g.ToolCalls) > 0)
 }
 
-// extractOpenAIGeneration reassembles an OpenAI-compatible body. Streaming
-// bodies are `data: {json}` SSE lines whose tokens live in choices[].delta;
-// non-streaming bodies are a single chat.completion whose text lives in
-// choices[].message. Both shapes are decoded per line so one function handles
-// either. The trailing usage chunk (empty choices) and the [DONE] sentinel
-// contribute nothing.
 // openaiMessage is the shared shape of an OpenAI streaming `delta` and a
 // non-streaming `message`: text content, reasoning, and any tool/function calls.
 type openaiMessage struct {
 	Content   string `json:"content"`
 	Reasoning string `json:"reasoning"`
 	ToolCalls []struct {
-		Index    int `json:"index"`
+		Index    *int `json:"index"`
 		Function struct {
 			Name      string `json:"name"`
 			Arguments string `json:"arguments"`
@@ -68,115 +114,117 @@ type openaiMessage struct {
 	} `json:"tool_calls"`
 }
 
-func extractOpenAIGeneration(body []byte) *Generation {
-	var output, reasoning strings.Builder
-	var finish string
-	found := false
-
-	// Tool calls accumulate across chunks keyed by their index (arguments arrive
-	// fragmented in streaming); toolOrder preserves first-seen order for stable
-	// rendering of multi-call responses.
-	toolByIndex := map[int]*ToolCall{}
-	var toolOrder []int
-	addToolDelta := func(idx int, name, args string) {
-		tc, ok := toolByIndex[idx]
-		if !ok {
-			tc = &ToolCall{}
-			toolByIndex[idx] = tc
-			toolOrder = append(toolOrder, idx)
-		}
-		if name != "" {
-			tc.Name = name
-		}
-		tc.Arguments += args
+func classifyGenerationEndpoint(endpoint string) generationKind {
+	switch {
+	case openaiEndpoints[endpoint]:
+		return generationKindOpenAI
+	case inferenceEndpoints[endpoint]:
+		return generationKindOllama
+	default:
+		return generationKindUnknown
 	}
-	accumulate := func(m openaiMessage) {
-		output.WriteString(m.Content)
-		reasoning.WriteString(m.Reasoning)
-		for _, tc := range m.ToolCalls {
-			addToolDelta(tc.Index, tc.Function.Name, tc.Function.Arguments)
-		}
-	}
-
-	for _, raw := range bytes.Split(body, []byte("\n")) {
-		line := bytes.TrimSpace(bytes.TrimPrefix(bytes.TrimSpace(raw), []byte("data: ")))
-		if len(line) == 0 || bytes.Equal(line, []byte("[DONE]")) {
-			continue
-		}
-
-		var chunk struct {
-			Choices []struct {
-				Delta        openaiMessage `json:"delta"`
-				Message      openaiMessage `json:"message"`
-				FinishReason string        `json:"finish_reason"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal(line, &chunk); err != nil {
-			continue
-		}
-
-		for _, c := range chunk.Choices {
-			accumulate(c.Delta)
-			accumulate(c.Message)
-			if c.FinishReason != "" {
-				finish = c.FinishReason
-			}
-			found = true
-		}
-	}
-
-	tools := make([]ToolCall, 0, len(toolOrder))
-	for _, idx := range toolOrder {
-		tools = append(tools, *toolByIndex[idx])
-	}
-
-	return buildGeneration(found, output.String(), reasoning.String(), finish, nil, tools)
 }
 
-// extractOllamaGeneration reassembles an Ollama-native NDJSON body. /api/generate
-// tokens arrive in `response` (+ `thinking` for reasoning models); /api/chat
-// tokens arrive in `message.content` (+ `message.thinking`). The terminal line
-// carries `done_reason` and, for /api/generate, the `context` KV-cache handle.
-func extractOllamaGeneration(body []byte) *Generation {
-	var output, reasoning strings.Builder
-	var finish string
-	var context []int
-	found := false
-
-	for _, raw := range bytes.Split(body, []byte("\n")) {
-		line := bytes.TrimSpace(raw)
-		if len(line) == 0 {
-			continue
-		}
-
-		var obj struct {
-			Response string `json:"response"`
-			Thinking string `json:"thinking"`
-			Message  struct {
-				Content  string `json:"content"`
-				Thinking string `json:"thinking"`
-			} `json:"message"`
-			DoneReason string `json:"done_reason"`
-			Context    []int  `json:"context"`
-		}
-		if err := json.Unmarshal(line, &obj); err != nil {
-			continue
-		}
-
-		output.WriteString(obj.Response)
-		output.WriteString(obj.Message.Content)
-		reasoning.WriteString(obj.Thinking)
-		reasoning.WriteString(obj.Message.Thinking)
-		if obj.DoneReason != "" {
-			finish = obj.DoneReason
-		}
-		if len(obj.Context) > 0 {
-			context = obj.Context
-		}
-		found = true
+func (a *GenerationAccumulator) feedOpenAILine(raw []byte) {
+	line := bytes.TrimSpace(bytes.TrimPrefix(bytes.TrimSpace(raw), []byte("data: ")))
+	if len(line) == 0 || bytes.Equal(line, []byte("[DONE]")) {
+		return
 	}
 
-	return buildGeneration(found, output.String(), reasoning.String(), finish, context, nil)
+	var chunk struct {
+		Choices []struct {
+			Delta        openaiMessage `json:"delta"`
+			Message      openaiMessage `json:"message"`
+			FinishReason string        `json:"finish_reason"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(line, &chunk); err != nil {
+		return
+	}
+
+	for _, choice := range chunk.Choices {
+		a.mergeOpenAIMessage(choice.Delta)
+		a.mergeOpenAIMessage(choice.Message)
+		if choice.FinishReason != "" {
+			a.finish = choice.FinishReason
+		}
+		a.found = true
+	}
+}
+
+func (a *GenerationAccumulator) feedOllamaLine(raw []byte) {
+	line := bytes.TrimSpace(raw)
+	if len(line) == 0 {
+		return
+	}
+
+	var obj struct {
+		Response string `json:"response"`
+		Thinking string `json:"thinking"`
+		Message  struct {
+			Content  string `json:"content"`
+			Thinking string `json:"thinking"`
+		} `json:"message"`
+		DoneReason string `json:"done_reason"`
+		Context    []int  `json:"context"`
+	}
+	if err := json.Unmarshal(line, &obj); err != nil {
+		return
+	}
+
+	a.output.WriteString(obj.Response)
+	a.output.WriteString(obj.Message.Content)
+	a.reasoning.WriteString(obj.Thinking)
+	a.reasoning.WriteString(obj.Message.Thinking)
+	if obj.DoneReason != "" {
+		a.finish = obj.DoneReason
+	}
+	if len(obj.Context) > 0 {
+		a.context = obj.Context
+	}
+	a.found = true
+}
+
+func (a *GenerationAccumulator) mergeOpenAIMessage(msg openaiMessage) {
+	a.output.WriteString(msg.Content)
+	a.reasoning.WriteString(msg.Reasoning)
+	for i, tc := range msg.ToolCalls {
+		a.mergeToolCallDelta(toolCallKey(tc.Index, i), tc.Function.Name, tc.Function.Arguments)
+	}
+}
+
+func (a *GenerationAccumulator) mergeToolCallDelta(key int, name, args string) {
+	if a.toolByKey == nil {
+		a.toolByKey = make(map[int]*ToolCall)
+	}
+	tc, ok := a.toolByKey[key]
+	if !ok {
+		tc = &ToolCall{}
+		a.toolByKey[key] = tc
+		a.toolOrder = append(a.toolOrder, key)
+	}
+	if name != "" {
+		tc.Name = name
+	}
+	tc.Arguments += args
+}
+
+func (a *GenerationAccumulator) buildToolCalls() []ToolCall {
+	if len(a.toolOrder) == 0 {
+		return nil
+	}
+	tools := make([]ToolCall, 0, len(a.toolOrder))
+	for _, key := range a.toolOrder {
+		tools = append(tools, *a.toolByKey[key])
+	}
+	return tools
+}
+
+func toolCallKey(idx *int, fallback int) int {
+	if idx != nil {
+		return *idx
+	}
+	return -(fallback + 1)
 }
 
 // buildGeneration assembles the final *Generation, applying the context preview

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"ollama-telemetry/internal/store"
@@ -28,7 +29,7 @@ func (f *fakeInferenceReader) Stats(context.Context, store.Filter) (store.Stats,
 }
 func (f *fakeInferenceReader) Models(context.Context) ([]string, error) { return nil, nil }
 
-func TestInferenceDetail_FetchesFullRecordFromReader(t *testing.T) {
+func TestInferenceDetail_FetchesFullRecordAsJSON(t *testing.T) {
 	reader := &fakeInferenceReader{
 		inf: inference.Inference{ID: "inf-5", Model: "gemma", ResponseBody: "hello world"},
 		ok:  true,
@@ -42,24 +43,31 @@ func TestInferenceDetail_FetchesFullRecordFromReader(t *testing.T) {
 	if reader.gotID != "inf-5" {
 		t.Fatalf("reader queried %q, want inf-5", reader.gotID)
 	}
-	if got.ResponseBody != "hello world" || got.ID != "inf-5" {
-		t.Fatalf("got %+v, want full record for inf-5", got)
+
+	// The binding returns JSON (not the domain type) so Wails can bind it; it
+	// must round-trip back into the domain shape.
+	var decoded inference.Inference
+	if err := json.Unmarshal([]byte(got), &decoded); err != nil {
+		t.Fatalf("InferenceDetail did not return valid JSON (%q): %v", got, err)
+	}
+	if decoded.ID != "inf-5" || decoded.ResponseBody != "hello world" {
+		t.Fatalf("decoded = %+v, want full record for inf-5", decoded)
 	}
 }
 
-func TestInferenceDetail_NilReaderReturnsZero(t *testing.T) {
+func TestInferenceDetail_NilReaderReturnsEmpty(t *testing.T) {
 	app := &App{} // no persistence wired
 
 	got, err := app.InferenceDetail("anything")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.ID != "" || got.ResponseBody != "" {
-		t.Fatalf("expected zero inference when reader is nil, got %+v", got)
+	if got != "" {
+		t.Fatalf("expected empty string when reader is nil, got %q", got)
 	}
 }
 
-func TestInferenceDetail_UnknownIDReturnsZero(t *testing.T) {
+func TestInferenceDetail_UnknownIDReturnsEmpty(t *testing.T) {
 	reader := &fakeInferenceReader{ok: false}
 	app := &App{inferenceReader: reader}
 
@@ -67,7 +75,7 @@ func TestInferenceDetail_UnknownIDReturnsZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got.ID != "" {
-		t.Fatalf("expected zero inference for unknown id, got %+v", got)
+	if got != "" {
+		t.Fatalf("expected empty string for unknown id, got %q", got)
 	}
 }

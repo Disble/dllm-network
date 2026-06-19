@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"strconv"
 	"time"
@@ -149,13 +151,23 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 	// clock (request -> completion).
 	reqTime := make(map[reassembly.FourTuple]time.Time)
 
+	// firstTokenTime records when the FIRST chunk carrying generated content was
+	// observed, per connection. It splits the wall-clock span into prompt-
+	// processing (request -> first token, the TTFT) and generation (first token
+	// -> completion) so streamed exchanges without server-side durations still
+	// get a meaningful waterfall. Zero until the first content chunk is seen.
+	firstTokenTime := make(map[reassembly.FourTuple]time.Time)
+
 	// lastSeen records the most recent activity time per connection so idle
 	// connections can be evicted (bounding state growth) and stuck in-progress
 	// requests surfaced as cancelled. lastSweep throttles the sweep itself.
 	lastSeen := make(map[reassembly.FourTuple]time.Time)
 	var lastSweep time.Time
 
-	// idSeq is a monotonic counter feeding stable per-exchange ids.
+	// runID namespaces this run's inference ids so they never collide with
+	// records persisted by a previous run (see inferenceID). idSeq is the
+	// monotonic per-run counter.
+	runID := newRunID()
 	idSeq := 0
 
 	// current is the running inference state emitted with every snapshot.
@@ -191,6 +203,7 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 			delete(reqID, key)
 			delete(respAccum, key)
 			delete(reqTime, key)
+			delete(firstTokenTime, key)
 			delete(lastSeen, key)
 		}
 		reassembler.EvictIdle(now)
@@ -253,7 +266,7 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					if m.Kind == httpx.KindRequest {
 						requestBuf[key] = m
 						idSeq++
-						reqID[key] = inferenceID(idSeq)
+						reqID[key] = inferenceID(runID, idSeq)
 						reqTime[key] = seg.At    // for wall-clock latency (OpenAI /v1)
 						delete(respAccum, key) // fresh exchange on this connection
 
@@ -289,6 +302,14 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					acc = append(acc, '\n')
 					respAccum[key] = acc
 
+					// Observe the time-to-first-token: the first chunk carrying
+					// generated content marks the prompt->generation transition,
+					// used to split the waterfall for streams without server-side
+					// durations. req.Path is the endpoint the extractor classifies on.
+					if firstTokenTime[key].IsZero() && inference.HasGeneratedContent(req.Path, m.Body) {
+						firstTokenTime[key] = seg.At
+					}
+
 					inf, ok := p.extractor.FromExchange(req, m)
 					capLog("    FromExchange ok=%v status=%d model=%s hasTokens=%v", ok, inf.Status, inf.Model, inf.Tokens != nil)
 					if !ok {
@@ -304,13 +325,28 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 					// response body override the per-line extractor values.
 					inf.ID = reqID[key]
 					inf.ResponseBody, inf.ResponseBodyTruncated = inference.TruncateBody(respAccum[key])
+					// Derive the normalized generation (assembled output text,
+					// reasoning, finish reason, context) from the FULL assembled
+					// stream — the single anti-corruption boundary that knows the
+					// wire format. Only on completion: re-parsing the growing body
+					// on every chunk would be O(n²), and the detail view shows the
+					// finished generation, not a half-streamed one.
+					if inf.Status == inference.PhaseCompleted {
+						inf.Generation = inference.ExtractGeneration(inf.Endpoint, respAccum[key])
+					}
 					// OpenAI streaming completes on the [DONE] sentinel, which carries
 					// no counts — the `usage` arrived in an earlier SSE chunk. Recover
 					// the counts from the assembled body when the per-line extractor
 					// could not (Tokens still nil on a completed exchange).
 					if inf.Status == inference.PhaseCompleted && inf.Tokens == nil {
 						inf.Tokens = inference.ExtractOpenAIStats(respAccum[key])
-						deriveWallClockTiming(inf.Tokens, reqTime[key], seg.At)
+						if inf.Tokens == nil {
+							// No usage chunk (include_usage not set): still surface the
+							// observed wall-clock timing so latency and the waterfall
+							// render. Counts stay honestly zero — never fabricated.
+							inf.Tokens = &inference.TokenStats{}
+						}
+						deriveStreamingTiming(inf.Tokens, reqTime[key], firstTokenTime[key], seg.At)
 					}
 					current = inf
 					if inf.Status == inference.PhaseCompleted {
@@ -327,6 +363,7 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 						}
 						delete(respAccum, key) // exchange done; release buffer
 						delete(reqTime, key)
+						delete(firstTokenTime, key)
 					}
 				}
 			}
@@ -392,30 +429,63 @@ func cancelledTiming(reqAt, lastAt time.Time) *inference.TokenStats {
 	}
 }
 
-// deriveWallClockTiming fills latency + tokens/sec from the observed request ->
-// completion span for exchanges whose body carries no server-side durations
-// (OpenAI /v1). It is a best-effort passive measurement: total elapsed wall
-// time, not Ollama's internal eval_duration. No-op when stats or the request
-// time are unavailable, so counts-only completions stay honest.
-func deriveWallClockTiming(stats *inference.TokenStats, reqAt, doneAt time.Time) {
+// deriveStreamingTiming fills the waterfall phases + latency + tokens/sec for a
+// streamed exchange whose body carries no server-side durations (OpenAI /v1).
+// It is a best-effort PASSIVE measurement from observed packet times — not the
+// model's internal eval_duration:
+//
+//	LoadDuration  = time-to-first-token   (request observed -> first content chunk)
+//	EvalDuration  = generation span       (first content chunk -> completion)
+//	TotalDuration = full wall-clock span  (request observed -> completion)
+//
+// When the first-token time was never observed (no content chunk seen, or it
+// arrived in the same packet as completion) the whole span is attributed to
+// generation and the phase split is left zero, so the bar still renders without
+// a fabricated TTFT. tokens/sec is computed against the GENERATION span so it
+// reflects decode speed, not queue+prompt latency. No-op when stats or the
+// request time are unavailable, keeping counts-only completions honest.
+func deriveStreamingTiming(stats *inference.TokenStats, reqAt, firstTokenAt, doneAt time.Time) {
 	if stats == nil || reqAt.IsZero() {
 		return
 	}
-	elapsed := doneAt.Sub(reqAt)
-	if elapsed <= 0 {
+	total := doneAt.Sub(reqAt)
+	if total <= 0 {
 		return
 	}
-	stats.TotalDuration = elapsed
-	stats.LatencyMS = float64(elapsed) / 1e6
-	if stats.EvalCount > 0 {
-		stats.PerSec = float64(stats.EvalCount) / elapsed.Seconds()
+	stats.TotalDuration = total
+	stats.LatencyMS = float64(total) / 1e6
+
+	evalSpan := total
+	if !firstTokenAt.IsZero() && firstTokenAt.After(reqAt) && doneAt.After(firstTokenAt) {
+		stats.LoadDuration = firstTokenAt.Sub(reqAt)
+		evalSpan = doneAt.Sub(firstTokenAt)
+		stats.EvalDuration = evalSpan
+	}
+	if stats.EvalCount > 0 && evalSpan > 0 {
+		stats.PerSec = float64(stats.EvalCount) / evalSpan.Seconds()
 	}
 }
 
-// inferenceID returns a stable, session-unique id for one captured exchange.
-// Session-scoped uniqueness is sufficient — ids are not persisted across runs.
-func inferenceID(seq int) string {
-	return "inf-" + strconv.Itoa(seq)
+// inferenceID returns a stable id for one captured exchange, unique BOTH within
+// a run (via seq) AND across runs (via runID). Cross-run uniqueness is required:
+// the durable SQLite store persists ids and App.InferenceDetail looks records up
+// by id, so a bare per-run counter (seq resetting to 0 each launch) made a new
+// run's "inf-1" collide with a previous run's persisted record and the detail
+// panel showed a ghost from an earlier session.
+func inferenceID(runID string, seq int) string {
+	return "inf-" + runID + "-" + strconv.Itoa(seq)
+}
+
+// newRunID returns a process-unique nonce used to namespace inference ids per
+// run. It uses crypto/rand so two launches (even within the same nanosecond)
+// never share a nonce; on the vanishingly rare rand failure it falls back to the
+// wall-clock nanos, which is still run-unique for a single-user local tool.
+func newRunID() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b[:])
 }
 
 // canonicalTuple returns a direction-independent key for a TCP connection so

@@ -54,8 +54,36 @@ func assertInferenceEqual(t *testing.T, got, want inference.Inference) {
 	}
 
 	assertTokensEqual(t, got.Tokens, want.Tokens)
+	assertGenerationEqual(t, got.Generation, want.Generation)
 	assertHeadersEqual(t, "RequestHeaders", got.RequestHeaders, want.RequestHeaders)
 	assertHeadersEqual(t, "ResponseHeaders", got.ResponseHeaders, want.ResponseHeaders)
+}
+
+func assertGenerationEqual(t *testing.T, got, want *inference.Generation) {
+	t.Helper()
+
+	if (got == nil) != (want == nil) {
+		t.Errorf("Generation nilness: got %v, want %v", got == nil, want == nil)
+		return
+	}
+	if got == nil {
+		return
+	}
+	if got.Output != want.Output || got.Reasoning != want.Reasoning || got.FinishReason != want.FinishReason {
+		t.Errorf("Generation text: got %+v, want %+v", *got, *want)
+	}
+	if got.ContextSize != want.ContextSize {
+		t.Errorf("Generation.ContextSize: got %d, want %d", got.ContextSize, want.ContextSize)
+	}
+	if len(got.ContextPreview) != len(want.ContextPreview) {
+		t.Errorf("Generation.ContextPreview length: got %d, want %d", len(got.ContextPreview), len(want.ContextPreview))
+		return
+	}
+	for i := range got.ContextPreview {
+		if got.ContextPreview[i] != want.ContextPreview[i] {
+			t.Errorf("Generation.ContextPreview[%d]: got %d, want %d", i, got.ContextPreview[i], want.ContextPreview[i])
+		}
+	}
 }
 
 func assertTokensEqual(t *testing.T, got, want *inference.TokenStats) {

@@ -16,6 +16,7 @@ import (
 // individually-NULLable scalar columns.
 type detail struct {
 	Tokens                *inference.TokenStats `json:"tokens"`
+	Generation            *inference.Generation `json:"generation"`
 	RequestBody           string                `json:"requestBody"`
 	RequestBodyTruncated  bool                  `json:"requestBodyTruncated"`
 	ResponseBody          string                `json:"responseBody"`
@@ -30,6 +31,7 @@ type detail struct {
 func marshalDetail(inf inference.Inference) (string, error) {
 	d := detail{
 		Tokens:                inf.Tokens,
+		Generation:            inf.Generation,
 		RequestBody:           inf.RequestBody,
 		RequestBodyTruncated:  inf.RequestBodyTruncated,
 		ResponseBody:          inf.ResponseBody,
@@ -55,6 +57,7 @@ func unmarshalDetail(raw string, inf *inference.Inference) error {
 	}
 
 	inf.Tokens = d.Tokens
+	inf.Generation = d.Generation
 	inf.RequestBody = d.RequestBody
 	inf.RequestBodyTruncated = d.RequestBodyTruncated
 	inf.ResponseBody = d.ResponseBody

@@ -42,6 +42,43 @@ export interface TokenStats {
 }
 
 /**
+ * GenerationData is the normalized, provider-agnostic generated content derived
+ * at the BACKEND extractor boundary. Mirrors internal/telemetry/inference.Generation.
+ * The frontend NEVER parses a response wire format: Ollama-native and
+ * OpenAI-compatible streams both arrive here in this one shape. null/undefined
+ * when the exchange produced no generation payload. The detail fetch carries it;
+ * the snapshot's recent list strips it (heavy), keeping it only on `current`.
+ */
+export interface GenerationData {
+  /** Assembled generated text (Ollama `response`/`message.content`, OpenAI `delta.content`). */
+  readonly output: string;
+  /** Assembled reasoning/thinking trace, or "" when the model emitted none. */
+  readonly reasoning: string;
+  /** Normalized stop reason ("stop", "length", "tool_calls", …), or "" when not reported. */
+  readonly finishReason: string;
+  /** Count of Ollama context token IDs; 0 when absent (OpenAI never has it). */
+  readonly contextSize: number;
+  /** First few context token IDs (bounded sample), or null when absent. */
+  readonly contextPreview: readonly number[] | null;
+  /**
+   * Tool/function calls the model emitted, reassembled at the backend boundary.
+   * null when none. For agent clients (GitHub Copilot) this is the real
+   * generated payload — `output` is empty.
+   */
+  readonly toolCalls: readonly ToolCallData[] | null;
+}
+
+/**
+ * ToolCallData is one normalized tool/function invocation. Mirrors
+ * internal/telemetry/inference.ToolCall. `arguments` is the raw JSON arguments
+ * string (the frontend pretty-prints it).
+ */
+export interface ToolCallData {
+  readonly name: string;
+  readonly arguments: string;
+}
+
+/**
  * HttpHeader is a single ordered HTTP header pair. Order is preserved and
  * duplicate names are allowed (e.g. multiple Set-Cookie), mirroring how
  * Chrome DevTools renders headers. Mirrors internal/capture/httpx.Header.
@@ -77,6 +114,14 @@ export interface InferenceEvent {
    * Callers MUST check for null before reading any field.
    */
   readonly tokens: TokenStats | null;
+
+  /**
+   * Normalized generated content (output, reasoning, finish reason, context),
+   * derived at the backend boundary. Mirrors json:"generation". Present on the
+   * on-demand detail record and the live `current` row; stripped from the
+   * snapshot's recent list. Null/undefined when no generation payload exists.
+   */
+  readonly generation?: GenerationData | null;
 
   // ---------------------------------------------------------------------------
   // DevTools-Network detail fields (R2/R3). Additive + OPTIONAL for back-compat.

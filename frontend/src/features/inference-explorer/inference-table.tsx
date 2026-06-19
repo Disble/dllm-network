@@ -1,6 +1,9 @@
 import { useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { PHASE_IN_PROGRESS } from '../../shared/contracts/dashboard-snapshot.types';
+import { deriveDisplayTiming } from '../../shared/helpers/live-timing.helpers';
+import { useElapsedNow } from '../../shared/hooks/use-elapsed-now';
 import { deriveEventId } from '../../shared/store/inference-store.helpers';
 import { INFERENCE_ROW_HEIGHT, INFERENCE_TABLE_OVERSCAN } from './inference-explorer.constants';
 import { InferenceTableRow } from './inference-table-row';
@@ -15,9 +18,16 @@ export function InferenceTable({ rows, selectedId, onSelect }: Readonly<Inferenc
   // eslint-disable-next-line no-undef -- DOM lib type; the flat config only declares document/window as globals.
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Waterfall scale reference: the slowest request in the visible set. Guarded at
-  // >= 1 so a single zero-latency row never divides by zero.
-  const maxLatencyMS = Math.max(1, ...rows.map((row) => row.tokens?.latencyMS ?? 0));
+  // Tick a shared clock only while at least one request is still in flight, so
+  // in-progress rows show live-elapsed latency + a growing waterfall without
+  // re-rendering the table once everything has completed.
+  const hasLive = rows.some((row) => row.tokens === null && row.status === PHASE_IN_PROGRESS);
+  const nowMS = useElapsedNow(hasLive);
+
+  // Waterfall scale reference: the slowest request in the visible set, INCLUDING
+  // the live elapsed of in-flight rows so a growing bar never overflows. Guarded
+  // at >= 1 so a single zero-latency row never divides by zero.
+  const maxLatencyMS = Math.max(1, ...rows.map((row) => deriveDisplayTiming(row, nowMS).totalMS ?? 0));
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -62,6 +72,7 @@ export function InferenceTable({ rows, selectedId, onSelect }: Readonly<Inferenc
                   rowId={rowId}
                   isSelected={rowId === selectedId}
                   maxLatencyMS={maxLatencyMS}
+                  nowMS={nowMS}
                   style={{
                     position: 'absolute',
                     top: 0,

@@ -238,6 +238,14 @@ body {
   box-shadow: 0 24px 80px var(--shadow-color);
 }
 
+.inference-detail__generation-section {
+  padding-top: 6px;
+}
+
+.inference-detail__generation-section:nth-child(n + 2) {
+  padding-top: 24px;
+}
+
 /* Definition-list field grid (inference detail). */
 .inference-detail__fields {
   display: grid;
@@ -859,6 +867,12 @@ body {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-subtle);
+}
+.inference-detail__tool-name {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text);
 }
 .inference-detail__context-toggle {
   display: inline-flex;

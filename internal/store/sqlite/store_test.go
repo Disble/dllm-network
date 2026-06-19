@@ -107,6 +107,13 @@ func TestStore_RoundTrip_FullMetricsAndHeaders(t *testing.T) {
 		StatusCode:   200,
 		RequestBody:  `{"model":"llama3:8b"}`,
 		ResponseBody: `{"done":true}`,
+		Generation: &inference.Generation{
+			Output:         "Hola mundo",
+			Reasoning:      "thinking...",
+			FinishReason:   "stop",
+			ContextSize:    8,
+			ContextPreview: []int{1, 2, 3, 4, 5, 6},
+		},
 		RequestHeaders: []inference.Header{
 			{Name: "Content-Type", Value: "application/json"},
 			{Name: "X-Request-Id", Value: "abc-123"},

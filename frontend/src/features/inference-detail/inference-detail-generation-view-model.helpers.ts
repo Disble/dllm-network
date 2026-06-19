@@ -1,78 +1,78 @@
-import type { GenerationView } from './inference-detail.types';
-
-/** How many context token IDs to show before eliding the rest. */
-const CONTEXT_PREVIEW_LIMIT = 6;
+import type { GenerationData, ToolCallData } from '../../shared/contracts/dashboard-snapshot.types';
+import type { GenerationView, ToolCallView } from './inference-detail.types';
 
 /**
- * buildGenerationView parses a captured Ollama generate/chat response body into
- * a display-ready, LLM-aware view. The body is plain JSON — nothing is
- * encrypted; `response` is a (possibly JSON) string and `context` is an array
- * of tokenizer IDs summarised by count + a short preview.
+ * buildGenerationView maps the NORMALIZED domain GenerationData (decoded at the
+ * backend extractor boundary — Ollama-native and OpenAI streams both arrive in
+ * one shape) into a display-ready view. This layer does PRESENTATION only: it
+ * re-indents JSON output and formats the bounded context sample into a string.
+ * It never parses a response wire format — that knowledge lives in the backend.
  *
- * Returns null (honest, never fabricated) when the body is absent or is not a
- * generation payload — i.e. it carries none of `response`/`context`/`done_reason`.
+ * Returns null (honest, never fabricated) when no generation payload exists.
  */
-export function buildGenerationView(body: string | undefined): GenerationView | null {
-  if (body === undefined || body === '') {
+export function buildGenerationView(generation: GenerationData | null | undefined): GenerationView | null {
+  if (generation === null || generation === undefined) {
     return null;
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch {
-    return null;
-  }
-
-  if (typeof parsed !== 'object' || parsed === null) {
-    return null;
-  }
-
-  const record = parsed as Record<string, unknown>;
-  const hasResponse = typeof record.response === 'string';
-  const hasContext = Array.isArray(record.context);
-  const hasDoneReason = typeof record.done_reason === 'string';
-
-  if (!hasResponse && !hasContext && !hasDoneReason) {
-    return null;
-  }
-
-  const responseText = hasResponse ? (record.response as string) : '';
-  const { output, outputIsJson } = formatOutput(responseText);
-
-  const contextTokens = hasContext ? (record.context as unknown[]) : null;
+  const { output, outputIsJson } = formatOutput(generation.output);
 
   return {
     output,
-    outputRaw: responseText,
+    outputRaw: generation.output,
     outputIsJson,
-    contextTokenCount: contextTokens === null ? null : contextTokens.length,
-    contextPreview: contextTokens === null ? '' : previewContext(contextTokens),
-    doneReason: hasDoneReason ? (record.done_reason as string) : null,
+    reasoning: generation.reasoning,
+    contextTokenCount: generation.contextSize > 0 ? generation.contextSize : null,
+    contextPreview: formatContextPreview(generation.contextSize, generation.contextPreview),
+    doneReason: generation.finishReason !== '' ? generation.finishReason : null,
+    toolCalls: mapToolCalls(generation.toolCalls),
   };
+}
+
+/**
+ * mapToolCalls turns the normalized tool calls into display-ready views,
+ * pretty-printing each one's JSON arguments. Empty array when none.
+ */
+function mapToolCalls(toolCalls: readonly ToolCallData[] | null): readonly ToolCallView[] {
+  if (toolCalls === null) {
+    return [];
+  }
+  return toolCalls.map((call) => {
+    const { output: prettyArgs, outputIsJson } = formatOutput(call.arguments);
+    return {
+      name: call.name,
+      argumentsRaw: call.arguments,
+      arguments: prettyArgs,
+      argumentsIsJson: outputIsJson,
+    };
+  });
 }
 
 /**
  * formatOutput re-indents the model output when it is itself valid JSON,
  * otherwise returns it verbatim as plain text.
  */
-function formatOutput(responseText: string): { output: string; outputIsJson: boolean } {
+function formatOutput(outputText: string): { output: string; outputIsJson: boolean } {
   try {
-    const inner = JSON.parse(responseText);
+    const inner = JSON.parse(outputText);
     if (typeof inner === 'object' && inner !== null) {
       return { output: JSON.stringify(inner, null, 2), outputIsJson: true };
     }
   } catch {
     // Not JSON — legitimate free-form model text.
   }
-  return { output: responseText, outputIsJson: false };
+  return { output: outputText, outputIsJson: false };
 }
 
 /**
- * previewContext joins the first few token IDs and elides the remainder so the
- * UI never dumps a thousand-element array.
+ * formatContextPreview joins the bounded sample of context token IDs and elides
+ * with an ellipsis when the full context is larger than the sample. Empty string
+ * when no context is present.
  */
-function previewContext(tokens: readonly unknown[]): string {
-  const head = tokens.slice(0, CONTEXT_PREVIEW_LIMIT).join(', ');
-  return tokens.length > CONTEXT_PREVIEW_LIMIT ? `${head}, …` : head;
+function formatContextPreview(contextSize: number, preview: readonly number[] | null): string {
+  if (preview === null || preview.length === 0) {
+    return '';
+  }
+  const head = preview.join(', ');
+  return contextSize > preview.length ? `${head}, …` : head;
 }

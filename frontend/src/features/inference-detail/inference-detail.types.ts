@@ -8,25 +8,43 @@ import type { HttpHeader, InferenceEvent } from '../../shared/contracts/dashboar
 export type InferenceDetailTabKey = 'overview' | 'payload' | 'response' | 'generation' | 'headers' | 'timing';
 
 /**
- * GenerationView is the parsed, display-ready facet of an Ollama generate/chat
- * response body. The wire body is plain JSON (NOT encrypted): `response` is a
- * (possibly JSON) string and `context` is an array of tokenizer IDs we
- * summarise rather than dump. Built by buildGenerationView; null when the body
- * is absent or is not a generation payload.
+ * GenerationView is the display-ready facet of the model's generated content. It
+ * is a pure PRESENTATION mapping over the normalized domain GenerationData
+ * (already decoded at the backend boundary — the frontend never parses a wire
+ * format): it pretty-prints JSON output and formats the context sample into a
+ * string. Built by buildGenerationView; null when no generation payload exists.
  */
 export interface GenerationView {
-  /** Model output: the `response` field, re-indented when it is itself JSON. */
+  /** Model output, re-indented when it is itself JSON. */
   readonly output: string;
-  /** The verbatim `response` field, before any pretty-printing (for the Raw view + Copy). */
+  /** The verbatim output, before any pretty-printing (for the Raw view + Copy). */
   readonly outputRaw: string;
   /** True when `output` was valid JSON we pretty-printed; false for plain text. */
   readonly outputIsJson: boolean;
-  /** Token count of the `context` array, or null when context is absent. */
+  /** Reasoning/thinking trace, or "" when the model emitted none. */
+  readonly reasoning: string;
+  /** Count of context token IDs, or null when context is absent. */
   readonly contextTokenCount: number | null;
   /** Short, comma-joined preview of the first context token IDs (ellipsis when long). */
   readonly contextPreview: string;
-  /** The `done_reason` field, or null when absent. */
+  /** The normalized finish reason, or null when absent. */
   readonly doneReason: string | null;
+  /** Tool/function calls, display-ready (arguments pretty-printed when JSON). Empty when none. */
+  readonly toolCalls: readonly ToolCallView[];
+}
+
+/**
+ * ToolCallView is one tool call prepared for display: its name plus the raw and
+ * pretty-printed argument forms (mirroring the code block's Raw/Pretty toggle).
+ */
+export interface ToolCallView {
+  readonly name: string;
+  /** Verbatim arguments JSON string (for Raw + Copy). */
+  readonly argumentsRaw: string;
+  /** Re-indented arguments when valid JSON; otherwise the verbatim string. */
+  readonly arguments: string;
+  /** True when the arguments parsed as JSON and were pretty-printed. */
+  readonly argumentsIsJson: boolean;
 }
 
 /**

@@ -269,6 +269,11 @@ func stripInferenceBodies(inf inference.Inference) inference.Inference {
 	inf.ResponseBodyTruncated = false
 	inf.RequestHeaders = nil
 	inf.ResponseHeaders = nil
+	// Generation carries the full output text — heavy, and the table never shows
+	// it. The on-demand detail fetch (App.InferenceDetail) carries it for the
+	// selected row; Current keeps it for the live row and the no-persistence
+	// fallback.
+	inf.Generation = nil
 	return inf
 }
 

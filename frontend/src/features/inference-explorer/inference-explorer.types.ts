@@ -63,6 +63,8 @@ export interface InferenceTableRowProps {
   readonly isSelected: boolean;
   /** Largest latency (ms) across the visible rows — the waterfall scale reference. */
   readonly maxLatencyMS: number;
+  /** Current epoch-ms clock, so in-progress rows render live elapsed timing. */
+  readonly nowMS: number;
   /** Absolute positioning style supplied by the virtualizer. */
   readonly style: CSSProperties;
   // eslint-disable-next-line no-unused-vars -- function-type param documents the handler contract.

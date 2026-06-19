@@ -1,4 +1,5 @@
 import { formatClockTime } from '../../shared/helpers/formatters.helpers';
+import { deriveDisplayTiming } from '../../shared/helpers/live-timing.helpers';
 import { LatencyPill } from '../../shared/ui/atoms/latency-pill';
 import { StatusCodePill } from '../../shared/ui/atoms/status-code-pill';
 import { TokenRateBadge } from '../../shared/ui/atoms/token-rate-badge';
@@ -9,14 +10,14 @@ import type { InferenceTableRowProps } from './inference-explorer.types';
 /**
  * InferenceTableRow renders a single request as a dense, selectable table row.
  * Pure presentational: derives display values from the event and atoms; the
- * absolute position comes from the virtualizer via `style`.
+ * absolute position comes from the virtualizer via `style`. The latency and
+ * waterfall reflect live elapsed wall-clock while the request is in progress
+ * (nowMS, supplied by the table); tok/s stays unavailable until completion.
  */
-export function InferenceTableRow({ event, rowId, isSelected, maxLatencyMS, style, onSelect }: Readonly<InferenceTableRowProps>) {
+export function InferenceTableRow({ event, rowId, isSelected, maxLatencyMS, nowMS, style, onSelect }: Readonly<InferenceTableRowProps>) {
   const statusLabel = INFERENCE_STATUS_LABELS[event.status] ?? 'unknown';
   const perSec = event.tokens?.perSec ?? null;
-  const latencyMS = event.tokens?.latencyMS ?? null;
-  const loadMS = event.tokens != null ? event.tokens.loadDuration / 1e6 : null;
-  const evalMS = event.tokens != null ? event.tokens.evalDuration / 1e6 : null;
+  const { loadMS, evalMS, totalMS: latencyMS } = deriveDisplayTiming(event, nowMS);
 
   return (
     <button

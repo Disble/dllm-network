@@ -442,6 +442,161 @@ func TestCapturePipeline_OpenAIChatCompletions(t *testing.T) {
 	}
 }
 
+// TestCapturePipeline_PopulatesGeneration asserts the pipeline derives the
+// normalized Generation (assembled output text) on completion — for BOTH the
+// Ollama-native NDJSON stream and the OpenAI SSE stream — so the Generation tab
+// renders the model output without the frontend ever parsing a wire format.
+func TestCapturePipeline_PopulatesGeneration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	cases := []struct {
+		name     string
+		request  []byte
+		response []byte
+		endpoint string
+	}{
+		{"ollama_generate", buildFakeGenerateRequest(), buildFakeGenerateResponse(), "/api/generate"},
+		{"openai_chat", buildFakeOpenAIRequest(), buildFakeOpenAIResponse(), "/v1/chat/completions"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			baseTime := time.Now()
+			tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+			segments := []capture.Segment{
+				{Tuple: tuple, Dir: capture.DirToServer, Payload: tc.request, SeqNo: 0, At: baseTime},
+				{Tuple: tuple, Dir: capture.DirFromServer, Payload: tc.response, SeqNo: 0, At: baseTime.Add(time.Millisecond)},
+			}
+
+			var emitted []dashboard.Snapshot
+			emitFn := func(ctx context.Context, event string, payload ...any) {
+				if event == dashboard.TopicDashboardSnapshot {
+					if snap, ok := payload[0].(dashboard.Snapshot); ok {
+						emitted = append(emitted, snap)
+					}
+				}
+			}
+
+			app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			app.Startup(ctx)
+
+			done, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+				cur := snap.Inference.Current
+				return cur.Endpoint == tc.endpoint && cur.Status == inference.PhaseCompleted
+			})
+			if !found {
+				t.Fatalf("no completed %s inference; got %d snapshots", tc.endpoint, len(emitted))
+			}
+
+			gen := done.Inference.Current.Generation
+			if gen == nil {
+				t.Fatal("expected Generation to be populated on completion")
+			}
+			if gen.Output != "hi" {
+				t.Errorf("Generation.Output: got %q, want %q", gen.Output, "hi")
+			}
+		})
+	}
+}
+
+// TestCapturePipeline_OpenAITTFTSplitsTiming asserts that for an OpenAI stream
+// (no server-side durations) the pipeline derives REAL waterfall phases from the
+// observed packet times: LoadDuration = time-to-first-token (request -> first
+// content chunk), EvalDuration = generation span (first chunk -> completion).
+// The two phases must sum to the total so the waterfall renders meaningful
+// segments instead of one flat "other" block.
+func TestCapturePipeline_OpenAITTFTSplitsTiming(t *testing.T) {
+	if testing.Short() {
+		t.Skip("pipeline integration test skipped in short mode")
+	}
+
+	header := "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n"
+	contentSSE := `data: {"object":"chat.completion.chunk","model":"gemma4:12b","choices":[{"index":0,"delta":{"content":"hi"},"finish_reason":null}]}` + "\n\n"
+	usageSSE := `data: {"object":"chat.completion.chunk","model":"gemma4:12b","choices":[],"usage":{"prompt_tokens":21,"completion_tokens":5,"total_tokens":26}}` + "\n\n"
+	doneSSE := "data: [DONE]\n\n"
+	chunk := func(s string) string { return itohex(len(s)) + "\r\n" + s + "\r\n" }
+
+	// Split the response so the first content chunk and the [DONE] arrive in
+	// SEPARATE segments at different observed times.
+	partA := []byte(header + chunk(contentSSE))
+	partB := []byte(chunk(usageSSE) + chunk(doneSSE) + "0\r\n\r\n")
+
+	baseTime := time.Now()
+	tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+	segments := []capture.Segment{
+		{Tuple: tuple, Dir: capture.DirToServer, Payload: buildFakeOpenAIRequest(), SeqNo: 0, At: baseTime},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: partA, SeqNo: 0, At: baseTime.Add(10 * time.Millisecond)},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: partB, SeqNo: uint32(len(partA)), At: baseTime.Add(50 * time.Millisecond)},
+	}
+
+	var emitted []dashboard.Snapshot
+	emitFn := func(ctx context.Context, event string, payload ...any) {
+		if event == dashboard.TopicDashboardSnapshot {
+			if snap, ok := payload[0].(dashboard.Snapshot); ok {
+				emitted = append(emitted, snap)
+			}
+		}
+	}
+
+	app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	done, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+		cur := snap.Inference.Current
+		return cur.Endpoint == "/v1/chat/completions" && cur.Status == inference.PhaseCompleted
+	})
+	if !found {
+		t.Fatalf("no completed /v1/chat/completions inference; got %d snapshots", len(emitted))
+	}
+
+	tok := done.Inference.Current.Tokens
+	if tok == nil {
+		t.Fatal("expected token stats with derived timing")
+	}
+	if tok.LoadDuration != 10*time.Millisecond {
+		t.Errorf("LoadDuration (TTFT): got %v, want 10ms", tok.LoadDuration)
+	}
+	if tok.EvalDuration != 40*time.Millisecond {
+		t.Errorf("EvalDuration (generation span): got %v, want 40ms", tok.EvalDuration)
+	}
+	if tok.TotalDuration != 50*time.Millisecond {
+		t.Errorf("TotalDuration: got %v, want 50ms", tok.TotalDuration)
+	}
+	if tok.LoadDuration+tok.EvalDuration != tok.TotalDuration {
+		t.Errorf("phases must sum to total: load=%v eval=%v total=%v", tok.LoadDuration, tok.EvalDuration, tok.TotalDuration)
+	}
+}
+
+// TestInferenceID_UniqueAcrossRuns guards against the stale-detail bug: ids must
+// be unique ACROSS process runs, because the durable SQLite store persists them
+// and App.InferenceDetail looks records up by id. A per-run counter alone (seq
+// resetting to 0 each launch) made a new run's "inf-1" collide with a previous
+// run's persisted "inf-1", so the detail panel showed a ghost record from an
+// earlier session. Embedding a per-run nonce eliminates the collision.
+func TestInferenceID_UniqueAcrossRuns(t *testing.T) {
+	t.Parallel()
+
+	run1, run2 := newRunID(), newRunID()
+	if run1 == run2 {
+		t.Fatalf("expected distinct run ids, got %q twice", run1)
+	}
+	if inferenceID(run1, 1) == inferenceID(run2, 1) {
+		t.Errorf("same seq from different runs must NOT collide: %q", inferenceID(run1, 1))
+	}
+	if stable, again := inferenceID(run1, 1), inferenceID(run1, 1); stable != again {
+		t.Errorf("same run+seq must be stable: %q vs %q", stable, again)
+	}
+	if inferenceID(run1, 1) == inferenceID(run1, 2) {
+		t.Error("different seq in the same run must differ")
+	}
+}
+
 // TestCapturePipeline_QuitCancelsCapture asserts that Quit cancels the capture
 // goroutine context and Close is called on the source, within ShutdownTimeout.
 func TestCapturePipeline_QuitCancelsCapture(t *testing.T) {

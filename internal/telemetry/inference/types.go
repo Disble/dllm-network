@@ -67,6 +67,58 @@ type Header struct {
 	Value string `json:"value"`
 }
 
+// Generation is the normalized, provider-agnostic view of an LLM response's
+// generated content. It is derived at the extractor boundary (the anti-
+// corruption layer) so the frontend NEVER parses a wire format: Ollama-native
+// (`response` / `message.content`, NDJSON) and OpenAI-compatible (`delta.content`
+// SSE chunks or a single chat.completion) both collapse into this one shape —
+// exactly as TokenStats already does for metrics.
+//
+// A nil *Generation means the exchange produced no generation payload (a
+// metadata-only poll, or a response with no decodable content). Callers MUST
+// check for nil before reading any field. Presentation concerns (pretty-printing
+// JSON output, eliding the context preview into a string) stay in the frontend —
+// this type carries DATA, not formatting.
+type Generation struct {
+	// Output is the assembled generated text: Ollama's joined `response` /
+	// `message.content` tokens, or OpenAI's joined `delta.content`. "" when the
+	// model emitted only reasoning (or nothing).
+	Output string `json:"output"`
+
+	// Reasoning is the assembled reasoning / thinking trace when the model and
+	// endpoint expose one (Ollama `thinking`, OpenAI `delta.reasoning`). "" when
+	// absent — most non-reasoning models never populate it.
+	Reasoning string `json:"reasoning"`
+
+	// FinishReason is the normalized stop reason ("stop", "length", "tool_calls",
+	// …) from the terminal line / chunk. "" when the stream did not report one.
+	FinishReason string `json:"finishReason"`
+
+	// ContextSize is the number of Ollama context token IDs returned by
+	// /api/generate (the conversational KV-cache handle). 0 when absent — OpenAI
+	// endpoints never expose it.
+	ContextSize int `json:"contextSize"`
+
+	// ContextPreview holds the first few context token IDs (bounded) so the UI can
+	// show a sample without the wire ever carrying a thousand-int array. nil when
+	// no context is present. The frontend formats this into a display string.
+	ContextPreview []int `json:"contextPreview"`
+
+	// ToolCalls holds the function/tool calls the model emitted, reassembled from
+	// the streamed deltas (OpenAI `delta.tool_calls`) or the single message
+	// (`message.tool_calls`). nil when the model produced none. For agent clients
+	// like GitHub Copilot this — not Output — is the real generated payload.
+	ToolCalls []ToolCall `json:"toolCalls"`
+}
+
+// ToolCall is one normalized function/tool invocation requested by the model.
+// Arguments is the raw JSON arguments string, reassembled across streamed chunks
+// for OpenAI (where it arrives in fragments) — the frontend pretty-prints it.
+type ToolCall struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
 // Inference is the domain type produced by the extractor for a single captured
 // HTTP exchange. It crosses the anti-corruption boundary from the capture
 // pipeline into the dashboard projection layer.
@@ -92,6 +144,13 @@ type Inference struct {
 	// Tokens holds derived and raw performance metrics. It is nil when
 	// metrics are unavailable (Status==PhaseInProgress or PhaseMetadataOnly).
 	Tokens *TokenStats `json:"tokens"`
+
+	// Generation holds the normalized generated content (output, reasoning,
+	// finish reason, context summary), derived from the assembled response body
+	// by ExtractGeneration. nil when the exchange carries no decodable
+	// generation payload. The capture pipeline populates it on completion from
+	// the full assembled stream; the per-line extractor leaves it nil.
+	Generation *Generation `json:"generation"`
 
 	// ---- DevTools-Network detail fields (Slice A) --------------------------
 	// StatusCode is the HTTP response status code (0 when not observed).

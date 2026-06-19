@@ -29,6 +29,15 @@ const (
 	// unavailable and MUST NOT be reported as zero — callers treat Tokens==nil
 	// as "not applicable".
 	PhaseMetadataOnly
+
+	// PhaseCancelled indicates the request was observed (in-progress) but its
+	// connection went idle past the capture timeout before any completion was
+	// seen — it was cancelled, abandoned, or its completion packets were lost.
+	// Token counts and tokens/sec are unavailable, but the observed wall-clock
+	// span (request → last activity) IS recorded in Tokens (TotalDuration /
+	// LatencyMS only) so the waterfall can still place the bar. A stuck request
+	// MUST surface as cancelled rather than hang in PhaseInProgress forever.
+	PhaseCancelled
 )
 
 // TokenStats holds the raw Ollama response performance counters and their

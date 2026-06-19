@@ -20,7 +20,7 @@ import (
 type queryInferencesInput struct {
 	Model    string `json:"model,omitempty" jsonschema:"filter by exact model name"`
 	Endpoint string `json:"endpoint,omitempty" jsonschema:"filter by HTTP endpoint path, e.g. /api/generate"`
-	Status   string `json:"status,omitempty" jsonschema:"filter by lifecycle status: in_progress, completed, or metadata_only"`
+	Status   string `json:"status,omitempty" jsonschema:"filter by lifecycle status: in_progress, completed, metadata_only, or cancelled"`
 	Since    string `json:"since,omitempty" jsonschema:"RFC3339 timestamp; only inferences at or after this time"`
 	Until    string `json:"until,omitempty" jsonschema:"RFC3339 timestamp; only inferences before this time"`
 	Limit    int    `json:"limit,omitempty" jsonschema:"maximum number of results; 0 means no cap"`
@@ -39,6 +39,7 @@ var phaseNames = map[string]inference.Phase{
 	"in_progress":   inference.PhaseInProgress,
 	"completed":     inference.PhaseCompleted,
 	"metadata_only": inference.PhaseMetadataOnly,
+	"cancelled":     inference.PhaseCancelled,
 }
 
 // parsePhase resolves a status string to *inference.Phase. An empty string
@@ -50,7 +51,7 @@ func parsePhase(s string) (*inference.Phase, error) {
 	}
 	p, ok := phaseNames[s]
 	if !ok {
-		return nil, fmt.Errorf("unknown status %q: must be one of in_progress, completed, metadata_only", s)
+		return nil, fmt.Errorf("unknown status %q: must be one of in_progress, completed, metadata_only, cancelled", s)
 	}
 	return &p, nil
 }

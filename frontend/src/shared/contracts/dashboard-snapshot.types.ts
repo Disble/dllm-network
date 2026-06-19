@@ -1,8 +1,9 @@
 /**
  * Phase describes the lifecycle state of a captured inference request.
- * Mirrors internal/telemetry/inference.Phase (iota: 0=InProgress, 1=Completed, 2=MetadataOnly).
+ * Mirrors internal/telemetry/inference.Phase
+ * (iota: 0=InProgress, 1=Completed, 2=MetadataOnly, 3=Cancelled).
  */
-export type InferencePhase = 0 | 1 | 2;
+export type InferencePhase = 0 | 1 | 2 | 3;
 
 /** PhaseInProgress — request is streaming; no derived metrics available. */
 export const PHASE_IN_PROGRESS: InferencePhase = 0;
@@ -10,6 +11,14 @@ export const PHASE_IN_PROGRESS: InferencePhase = 0;
 export const PHASE_COMPLETED: InferencePhase = 1;
 /** PhaseMetadataOnly — non-inference endpoint (e.g. /api/tags); token metrics structurally unavailable. */
 export const PHASE_METADATA_ONLY: InferencePhase = 2;
+/**
+ * PhaseCancelled — request observed but its connection went idle past the
+ * capture timeout before completing (cancelled, abandoned, or completion
+ * packets lost). Token counts/throughput are unavailable, but tokens carries
+ * the observed wall-clock span (totalDuration/latencyMS only) so the waterfall
+ * can still render the bar.
+ */
+export const PHASE_CANCELLED: InferencePhase = 3;
 
 /**
  * TokenStats holds the raw Ollama response performance counters and derived metrics.

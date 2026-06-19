@@ -109,6 +109,18 @@ func (recent *Recent) RecordInferenceCompletion(inf inference.Inference) {
 	recent.inferences = appendBoundedInference(recent.inferences, inf, recent.inferenceLimit)
 }
 
+// RecordInferenceCancellation appends a cancelled/incomplete inference to the
+// bounded terminal-event feed. The feed holds all TERMINAL inference events;
+// a cancellation is terminal too (the request will never complete). Callers
+// should only call this once per connection, when an in-progress request is
+// evicted without ever completing.
+func (recent *Recent) RecordInferenceCancellation(inf inference.Inference) {
+	recent.mu.Lock()
+	defer recent.mu.Unlock()
+
+	recent.inferences = appendBoundedInference(recent.inferences, inf, recent.inferenceLimit)
+}
+
 // InferenceEvents returns a copy of the bounded inference-event history in
 // chronological order. Returns nil when no completions have been recorded.
 func (recent *Recent) InferenceEvents() []inference.Inference {

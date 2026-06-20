@@ -23,7 +23,7 @@ describe('createDashboardViewModel', () => {
     expect(vm.stalenessLabel).toBe('Fresh passive snapshot');
     expect(vm.collectionModeLabel).toBe('Passive-only');
     expect(vm.healthLabel).toBe('Healthy');
-    expect(vm.snapshotTimeLabel).toBe('2026-06-15 00:00:00Z');
+    expect(vm.snapshotTimeLabel).toBe('2026-06-14 19:00:00 -05:00');
   });
 
   it('marks stale snapshots when the signal ages out', () => {

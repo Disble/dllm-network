@@ -116,7 +116,7 @@ describe('InferenceKpiContainer', () => {
     expect(screen.getByText('3')).toBeTruthy();
     expect(screen.getByText('37.5 tok/s')).toBeTruthy();
     expect(screen.getByText('219')).toBeTruthy();
-    expect(screen.getByText('2026-06-18 14:27:02Z')).toBeTruthy();
+    expect(screen.getByText('2026-06-18 09:27:02 -05:00')).toBeTruthy();
 
     act(() => {
       useInferenceStore.getState().setQuery('llama3');
@@ -126,7 +126,7 @@ describe('InferenceKpiContainer', () => {
     expect(screen.getByText('1')).toBeTruthy();
     expect(screen.getByText('30.0 tok/s')).toBeTruthy();
     expect(screen.getByText('50')).toBeTruthy();
-    expect(screen.getByText('2026-06-18 14:25:02Z')).toBeTruthy();
+    expect(screen.getByText('2026-06-18 09:25:02 -05:00')).toBeTruthy();
 
     act(() => {
       useInferenceStore.getState().setQuery('');
@@ -136,6 +136,6 @@ describe('InferenceKpiContainer', () => {
     expect(screen.getByText('3')).toBeTruthy();
     expect(screen.getByText('37.5 tok/s')).toBeTruthy();
     expect(screen.getByText('219')).toBeTruthy();
-    expect(screen.getByText('2026-06-18 14:27:02Z')).toBeTruthy();
+    expect(screen.getByText('2026-06-18 09:27:02 -05:00')).toBeTruthy();
   });
 });

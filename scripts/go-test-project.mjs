@@ -15,7 +15,7 @@ if (packageLines.length === 0) {
   throw new Error('No Go packages found for project validation.');
 }
 
-execFileSync('go', ['test', ...packageLines], {
+execFileSync('go', ['test', '-coverprofile=coverage.out', '-covermode=atomic', ...packageLines], {
   cwd: root,
   stdio: 'inherit',
 });

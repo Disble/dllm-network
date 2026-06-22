@@ -457,7 +457,10 @@ func (p *Parser) resetChunkState() {
 
 // ---- header parsing ---------------------------------------------------------
 
-// parseHeaderBlock parses the raw header block (everything before the blank line).
+// parseHeaderBlock parses the raw header block (everything before the blank
+// line). It populates ph with the start-line fields, every header in wire
+// order, and semantic flags derived from Content-Length, Transfer-Encoding,
+// and Content-Type.
 func parseHeaderBlock(block []byte) parsedHeaders {
 	ph := parsedHeaders{contentLength: -1}
 
@@ -466,26 +469,7 @@ func parseHeaderBlock(block []byte) parsedHeaders {
 		return ph
 	}
 
-	// Parse request or response line.
-	firstLine := string(lines[0])
-	switch {
-	case strings.HasPrefix(firstLine, "HTTP/"):
-		ph.kind = KindResponse
-		parts := strings.SplitN(firstLine, " ", 3)
-		if len(parts) >= 2 {
-			code, err := strconv.Atoi(parts[1])
-			if err == nil {
-				ph.statusCode = code
-			}
-		}
-	default:
-		ph.kind = KindRequest
-		parts := strings.SplitN(firstLine, " ", 3)
-		if len(parts) >= 2 {
-			ph.method = parts[0]
-			ph.path = parts[1]
-		}
-	}
+	parseStartLine(string(lines[0]), &ph)
 
 	// Parse header fields.
 	for _, raw := range lines[1:] {
@@ -500,26 +484,69 @@ func parseHeaderBlock(block []byte) parsedHeaders {
 		// Preserve every header in wire order with its original name casing.
 		ph.headers = append(ph.headers, Header{Name: name, Value: val})
 
-		switch strings.ToLower(name) {
-		case "content-length":
-			n, err := strconv.Atoi(val)
-			if err == nil {
-				ph.contentLength = n
-			}
-		case "transfer-encoding":
-			if strings.EqualFold(val, "chunked") {
-				ph.chunked = true
-			}
-		case "content-type":
-			lv := strings.ToLower(val)
-			if strings.Contains(lv, "ndjson") || strings.Contains(lv, "x-ndjson") {
-				ph.isNDJSON = true
-			}
-			if strings.Contains(lv, "text/event-stream") {
-				ph.isSSE = true
-			}
-		}
+		classifyHeaderField(name, val, &ph)
 	}
 
 	return ph
+}
+
+// parseStartLine dispatches the first header-block line to either
+// parseStatusLine for an HTTP status-line or parseRequestLine for a
+// request-line. It mutates ph.
+func parseStartLine(line string, ph *parsedHeaders) {
+	switch {
+	case strings.HasPrefix(line, "HTTP/"):
+		parseStatusLine(line, ph)
+	default:
+		parseRequestLine(line, ph)
+	}
+}
+
+// parseStatusLine parses an HTTP status-line ("HTTP/x.y CODE Reason") and
+// stores the response kind and status code in ph.
+func parseStatusLine(line string, ph *parsedHeaders) {
+	ph.kind = KindResponse
+	parts := strings.SplitN(line, " ", 3)
+	if len(parts) >= 2 {
+		code, err := strconv.Atoi(parts[1])
+		if err == nil {
+			ph.statusCode = code
+		}
+	}
+}
+
+// parseRequestLine parses an HTTP request-line ("METHOD PATH HTTP/x.y") and
+// stores the request kind, method, and path in ph.
+func parseRequestLine(line string, ph *parsedHeaders) {
+	ph.kind = KindRequest
+	parts := strings.SplitN(line, " ", 3)
+	if len(parts) >= 2 {
+		ph.method = parts[0]
+		ph.path = parts[1]
+	}
+}
+
+// classifyHeaderField applies semantic rules to a single header after it has
+// already been appended to ph.headers in wire order. It mutates ph to record
+// Content-Length, chunked Transfer-Encoding, and NDJSON/SSE Content-Type.
+func classifyHeaderField(name, value string, ph *parsedHeaders) {
+	switch strings.ToLower(name) {
+	case "content-length":
+		n, err := strconv.Atoi(value)
+		if err == nil {
+			ph.contentLength = n
+		}
+	case "transfer-encoding":
+		if strings.EqualFold(value, "chunked") {
+			ph.chunked = true
+		}
+	case "content-type":
+		lv := strings.ToLower(value)
+		if strings.Contains(lv, "ndjson") || strings.Contains(lv, "x-ndjson") {
+			ph.isNDJSON = true
+		}
+		if strings.Contains(lv, "text/event-stream") {
+			ph.isSSE = true
+		}
+	}
 }

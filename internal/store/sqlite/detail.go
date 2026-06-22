@@ -70,6 +70,9 @@ func unmarshalDetail(raw string, inf *inference.Inference) error {
 	return nil
 }
 
+// GetInferenceContext returns the requested sections of an inference record.
+// It always populates availability flags; only the sections explicitly
+// requested (or Metadata by default) are filled in the result.
 func (s *Store) GetInferenceContext(ctx context.Context, query store.GetInferenceContextQuery) (store.GetInferenceContextResult, bool, error) {
 	inf, ok, err := s.Get(ctx, query.ID)
 	if err != nil || !ok {
@@ -90,30 +93,13 @@ func (s *Store) GetInferenceContext(ctx context.Context, query store.GetInferenc
 	for _, section := range sections {
 		switch section {
 		case store.InferenceContextSectionMetadata:
-			result.Metadata = &store.InferenceContextMetadata{
-				ID:         inf.ID,
-				At:         inf.At,
-				Model:      inf.Model,
-				Endpoint:   inf.Endpoint,
-				Method:     inf.Method,
-				Status:     store.InferenceStatusLabel(inf.Status),
-				StatusCode: inf.StatusCode,
-				Streaming:  inf.Streaming,
-				PromptSize: inf.PromptSize,
-			}
+			result.Metadata = buildInferenceContextMetadata(inf)
 		case store.InferenceContextSectionTokens:
-			if inf.Tokens != nil {
-				tokens := *inf.Tokens
-				result.Tokens = &tokens
-			}
+			result.Tokens = buildInferenceContextTokens(inf)
 		case store.InferenceContextSectionRequestHeaders:
-			if inf.RequestHeaders != nil {
-				result.RequestHeaders = append([]inference.Header(nil), inf.RequestHeaders...)
-			}
+			result.RequestHeaders = buildInferenceContextRequestHeaders(inf)
 		case store.InferenceContextSectionResponseHeaders:
-			if inf.ResponseHeaders != nil {
-				result.ResponseHeaders = append([]inference.Header(nil), inf.ResponseHeaders...)
-			}
+			result.ResponseHeaders = buildInferenceContextResponseHeaders(inf)
 		}
 	}
 
@@ -123,6 +109,49 @@ func (s *Store) GetInferenceContext(ctx context.Context, query store.GetInferenc
 	}
 
 	return result, true, nil
+}
+
+// buildInferenceContextMetadata builds the metadata section from inf.
+func buildInferenceContextMetadata(inf inference.Inference) *store.InferenceContextMetadata {
+	return &store.InferenceContextMetadata{
+		ID:         inf.ID,
+		At:         inf.At,
+		Model:      inf.Model,
+		Endpoint:   inf.Endpoint,
+		Method:     inf.Method,
+		Status:     store.InferenceStatusLabel(inf.Status),
+		StatusCode: inf.StatusCode,
+		Streaming:  inf.Streaming,
+		PromptSize: inf.PromptSize,
+	}
+}
+
+// buildInferenceContextTokens returns a copy of inf.Tokens, or nil when no
+// token stats are available.
+func buildInferenceContextTokens(inf inference.Inference) *inference.TokenStats {
+	if inf.Tokens == nil {
+		return nil
+	}
+	tokens := *inf.Tokens
+	return &tokens
+}
+
+// buildInferenceContextRequestHeaders returns a defensive copy of the request
+// headers, preserving nil when no headers were captured.
+func buildInferenceContextRequestHeaders(inf inference.Inference) []inference.Header {
+	if inf.RequestHeaders == nil {
+		return nil
+	}
+	return append([]inference.Header(nil), inf.RequestHeaders...)
+}
+
+// buildInferenceContextResponseHeaders returns a defensive copy of the response
+// headers, preserving nil when no headers were captured.
+func buildInferenceContextResponseHeaders(inf inference.Inference) []inference.Header {
+	if inf.ResponseHeaders == nil {
+		return nil
+	}
+	return append([]inference.Header(nil), inf.ResponseHeaders...)
 }
 
 func normalizeRequestedSections(sections []store.InferenceContextSection) []store.InferenceContextSection {

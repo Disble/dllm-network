@@ -8,7 +8,7 @@ const tsxLayeringSyntaxRules = [
       'Feature Boundary: UI components (.tsx) cannot directly import infrastructure layers. Use a feature hook or repository boundary instead.',
   },
   {
-    selector: 'ImportDeclaration[source.value=/^@tauri-apps(?:\\/.*)?$/]',
+    selector: String.raw`ImportDeclaration[source.value=/^@tauri-apps(?:\/.*)?$/]`,
     message:
       'Feature Boundary: UI components (.tsx) cannot directly import runtime integration adapters. Use a feature hook or app boundary instead.',
   },
@@ -16,7 +16,7 @@ const tsxLayeringSyntaxRules = [
 
 const schemaPlacementSyntaxRules = [
   {
-    selector: 'ImportDeclaration[source.value=/^zod(?:\\/.*)?$/]',
+    selector: String.raw`ImportDeclaration[source.value=/^zod(?:\/.*)?$/]`,
     message:
       'Strict Colocation: Zod schemas must live in a dedicated *.schema.ts file, never inside a component or hook.',
   },
@@ -70,11 +70,11 @@ const appDeliverySyntaxRules = [
       'Delivery Rule: app/ files cannot call React hooks through the React namespace. Move screen logic into feature hooks or components.',
   },
   {
-    selector: 'ImportDeclaration[source.value=/^src\\/shared\\/.*use-/]',
+    selector: String.raw`ImportDeclaration[source.value=/^src\/shared\/.*use-/]`,
     message: 'Delivery Rule: app/ files cannot import shared hooks directly. Compose through feature entrypoints.',
   },
   {
-    selector: 'ImportDeclaration[source.value=/^src\\/shared\\//]',
+    selector: String.raw`ImportDeclaration[source.value=/^src\/shared\//]`,
     message: 'Delivery Rule: app/ files may consume shared contracts and presenters only through intentional composition seams rooted in src/shared.',
   },
 ];

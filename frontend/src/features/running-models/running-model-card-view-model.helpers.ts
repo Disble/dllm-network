@@ -12,8 +12,8 @@ const ABSENT = '—';
 export function buildRunningModelCardViewModel(model: RunningModelView): RunningModelCardViewModel {
   return {
     name: model.name,
-    parameterSize: model.parameterSize !== '' ? model.parameterSize : ABSENT,
-    quantizationLevel: model.quantizationLevel !== '' ? model.quantizationLevel : ABSENT,
+    parameterSize: model.parameterSize === '' ? ABSENT : model.parameterSize,
+    quantizationLevel: model.quantizationLevel === '' ? ABSENT : model.quantizationLevel,
     sizeLabel: formatBytes(model.size),
     sizeVramLabel: formatBytes(model.sizeVram),
     contextLengthLabel: String(model.contextLength),

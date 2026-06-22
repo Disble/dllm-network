@@ -32,12 +32,12 @@ export function InferenceDetailGeneration({ event }: Readonly<InferenceDetailBod
         <InferenceDetailCodeBlock raw={view.outputRaw} pretty={view.outputIsJson ? view.output : null} />
       </section>
 
-      {view.reasoning !== '' ? (
+      {view.reasoning === '' ? null : (
         <section className="inference-detail__generation-section">
           <h3 className="inference-detail__generation-label">Reasoning</h3>
           <InferenceDetailCodeBlock raw={view.reasoning} />
         </section>
-      ) : null}
+      )}
 
       {view.toolCalls.map((call, index) => (
         <section className="inference-detail__generation-section" key={`${call.name}-${index}`}>

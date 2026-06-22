@@ -24,7 +24,7 @@ export function buildGenerationView(generation: GenerationData | null | undefine
     reasoning: generation.reasoning,
     contextTokenCount: generation.contextSize > 0 ? generation.contextSize : null,
     contextPreview: formatContextPreview(generation.contextSize, generation.contextPreview),
-    doneReason: generation.finishReason !== '' ? generation.finishReason : null,
+    doneReason: generation.finishReason === '' ? null : generation.finishReason,
     toolCalls: mapToolCalls(generation.toolCalls),
   };
 }

@@ -325,6 +325,6 @@ func fixedClock(now time.Time) Clock {
 	return func() time.Time { return now }
 }
 
-func containsText(value string, fragment string) bool {
+func containsText(value, fragment string) bool {
 	return strings.Contains(value, fragment)
 }

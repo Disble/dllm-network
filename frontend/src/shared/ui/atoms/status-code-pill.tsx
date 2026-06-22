@@ -14,13 +14,16 @@ export function StatusCodePill({ statusCode }: Readonly<StatusCodePillProps>) {
     );
   }
 
-  const variant = statusCode >= 500 || statusCode < 200
-    ? 'error'
-    : statusCode >= 400
-      ? 'error'
-      : statusCode >= 300
-        ? 'redirect'
-        : 'ok';
+  let variant: 'ok' | 'redirect' | 'error';
+  if (statusCode >= 500 || statusCode < 200) {
+    variant = 'error';
+  } else if (statusCode >= 400) {
+    variant = 'error';
+  } else if (statusCode >= 300) {
+    variant = 'redirect';
+  } else {
+    variant = 'ok';
+  }
 
   return (
     <span className={`status-code-pill status-code-pill--${variant}`} aria-label={`HTTP ${statusCode}`}>

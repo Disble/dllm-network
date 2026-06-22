@@ -3,6 +3,8 @@
 package capture
 
 import (
+	// embed is required for the go:embed directives below that bundle WinDivert
+	// assets into the binary.
 	_ "embed"
 	"fmt"
 	"os"

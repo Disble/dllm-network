@@ -154,6 +154,27 @@ func TestProjectorFallsBackToRecentActivityWhenCurrentActivityIsMissing(t *testi
 	}
 }
 
+// snapshotJSONDecode mirrors the frontend-facing JSON shape used by
+// TestProjectorSnapshotJSONUsesArraysForFrontendCollections to assert that
+// collection fields marshal as arrays (not null).
+type snapshotJSONDecode struct {
+	Inferred struct {
+		Current struct {
+			Evidence []activity.Evidence `json:"evidence"`
+		} `json:"current"`
+		Recent []activity.Event `json:"recent"`
+	} `json:"inferred"`
+	Recent struct {
+		ConfirmedModels []RecentConfirmedModel `json:"confirmedModels"`
+	} `json:"recent"`
+	Inference struct {
+		Recent []inference.Inference `json:"recent"`
+	} `json:"inference"`
+	Passive struct {
+		Notes []string `json:"notes"`
+	} `json:"passive"`
+}
+
 func TestProjectorSnapshotJSONUsesArraysForFrontendCollections(t *testing.T) {
 	t.Parallel()
 
@@ -176,23 +197,7 @@ func TestProjectorSnapshotJSONUsesArraysForFrontendCollections(t *testing.T) {
 		t.Fatalf("marshal snapshot: %v", err)
 	}
 
-	var decoded struct {
-		Inferred struct {
-			Current struct {
-				Evidence []activity.Evidence `json:"evidence"`
-			} `json:"current"`
-			Recent []activity.Event `json:"recent"`
-		} `json:"inferred"`
-		Recent struct {
-			ConfirmedModels []RecentConfirmedModel `json:"confirmedModels"`
-		} `json:"recent"`
-		Inference struct {
-			Recent []inference.Inference `json:"recent"`
-		} `json:"inference"`
-		Passive struct {
-			Notes []string `json:"notes"`
-		} `json:"passive"`
-	}
+	var decoded snapshotJSONDecode
 	if err := json.Unmarshal(payload, &decoded); err != nil {
 		t.Fatalf("unmarshal snapshot payload: %v", err)
 	}

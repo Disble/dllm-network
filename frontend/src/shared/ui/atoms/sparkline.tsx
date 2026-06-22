@@ -17,7 +17,7 @@ export function Sparkline({ values, width = SPARKLINE_DEFAULT_WIDTH, height = SP
       height={height}
       viewBox={`0 0 ${width} ${height}`}
       aria-label={ariaLabel}
-      role={ariaLabel !== undefined ? 'img' : undefined}
+      role={ariaLabel === undefined ? undefined : 'img'}
       aria-hidden={ariaLabel === undefined ? true : undefined}
     >
       {points !== null && (

@@ -216,6 +216,13 @@ body {
   min-height: auto;
   padding: 0;
   background: none;
+  min-width: 0;
+  height: 100%;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 24px 80px var(--shadow-color);
 }
 
 /* Constrain every top-level block to the same centred column. */
@@ -236,6 +243,9 @@ body {
   border-radius: 20px;
   background: var(--surface);
   box-shadow: 0 24px 80px var(--shadow-color);
+  position: sticky;
+  top: 24px;
+  min-width: 0;
 }
 
 .inference-detail__generation-section {
@@ -278,6 +288,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  gap: 10px;
 }
 
 .inference-detail__model {
@@ -401,16 +412,6 @@ body {
 
 .secondary-telemetry-workspace > * {
   min-width: 0;
-}
-
-.dashboard-root .dashboard-shell {
-  min-width: 0;
-  height: 100%;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  box-shadow: 0 24px 80px var(--shadow-color);
 }
 
 .dashboard-root .dashboard-header {
@@ -704,16 +705,6 @@ body {
 }
 
 /* ---- Detail: tabbed inspector ---- */
-.inference-detail {
-  position: sticky;
-  top: 24px;
-  min-width: 0;
-}
-.inference-detail__header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 .inference-detail__empty {
   margin: 0;
   padding: 48px 8px;
@@ -777,7 +768,7 @@ body {
   font-size: 0.78rem;
   line-height: 1.5;
   white-space: pre-wrap;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   max-height: 360px;
   overflow: auto;
 }

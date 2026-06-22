@@ -439,10 +439,9 @@ func (p *Parser) emitNDJSONLine(line []byte) Message {
 		msg.ParseErr = fmt.Errorf("ndjson parse: %w", err)
 	} else {
 		if raw, ok := obj["done"]; ok {
-			var done bool
-			if jsonErr := json.Unmarshal(raw, &done); jsonErr == nil {
-				msg.Done = done
-			}
+			// Malformed `done` values are ignored; the body is still emitted and
+			// the zero value (false) is the safe default.
+			_ = json.Unmarshal(raw, &msg.Done)
 		}
 	}
 

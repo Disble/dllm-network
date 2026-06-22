@@ -64,7 +64,7 @@ export function ingestSnapshotEvents(
     incoming.push(snapshot.inference.current);
   }
 
-  return incoming.reduce(upsertEvent, events);
+  return incoming.reduce((acc, event) => upsertEvent(acc, event), events);
 }
 
 /**

@@ -152,6 +152,9 @@ func (s *Store) resolveCounts(ctx context.Context) (store.InferenceCounts, error
 }
 
 func (s *Store) resolveFacetCounts(ctx context.Context, column string) ([]store.FacetCount, error) {
+	if column != "model" && column != "endpoint" {
+		return nil, fmt.Errorf("sqlite: invalid facet column %q", column)
+	}
 	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`SELECT %s, COUNT(*) FROM inferences GROUP BY %s ORDER BY COUNT(*) DESC, %s ASC`, column, column, column))
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: resolve %s: %w", column, err)
@@ -272,7 +275,7 @@ func searchCursorClause(query store.SearchInferencesQuery) (string, []any, error
 	return "(at < ? OR (at = ? AND id < ?))", []any{payload.At.UnixNano(), payload.At.UnixNano(), payload.ID}, nil
 }
 
-func scanInferenceSummary(r row) (store.InferenceSummary, error) {
+func scanInferenceSummary(r rowScanner) (store.InferenceSummary, error) {
 	var (
 		id, model, endpoint, method string
 		atNanos                     int64

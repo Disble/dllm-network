@@ -99,6 +99,13 @@ func (recent *Recent) RecordSnapshotOnTransition(snapshot Snapshot) bool {
 	return true
 }
 
+// recordInferenceEventLocked appends an inference event to the bounded feed.
+// The caller must hold recent.mu. Used by both completion and cancellation
+// wrappers since the append logic is identical.
+func (recent *Recent) recordInferenceEventLocked(inf inference.Inference) {
+	recent.inferences = appendBoundedInference(recent.inferences, inf, recent.inferenceLimit)
+}
+
 // RecordInferenceCompletion appends a completed inference event to the bounded
 // inference-event feed. Each completion is always a genuine state transition —
 // no dedup is applied. Callers should only call this for done:true events.
@@ -106,7 +113,7 @@ func (recent *Recent) RecordInferenceCompletion(inf inference.Inference) {
 	recent.mu.Lock()
 	defer recent.mu.Unlock()
 
-	recent.inferences = appendBoundedInference(recent.inferences, inf, recent.inferenceLimit)
+	recent.recordInferenceEventLocked(inf)
 }
 
 // RecordInferenceCancellation appends a cancelled/incomplete inference to the
@@ -118,7 +125,7 @@ func (recent *Recent) RecordInferenceCancellation(inf inference.Inference) {
 	recent.mu.Lock()
 	defer recent.mu.Unlock()
 
-	recent.inferences = appendBoundedInference(recent.inferences, inf, recent.inferenceLimit)
+	recent.recordInferenceEventLocked(inf)
 }
 
 // InferenceEvents returns a copy of the bounded inference-event history in

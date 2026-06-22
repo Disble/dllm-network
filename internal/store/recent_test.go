@@ -142,7 +142,7 @@ func TestRecentSupportsSafeEmptyStateAndLatestSnapshotReplacement(t *testing.T) 
 	if activities := recent.Activities(); len(activities) != 0 {
 		t.Fatalf("expected empty activity slice, got %d entries", len(activities))
 	}
-	if replaced := recent.ReplaceLatestSnapshot(Snapshot{ConfirmedModel: "should-not-panic"}); replaced {
+	if recent.ReplaceLatestSnapshot(Snapshot{ConfirmedModel: "should-not-panic"}) {
 		t.Fatal("expected empty store replacement to report false")
 	}
 

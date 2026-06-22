@@ -6,10 +6,10 @@ import (
 	"dllm-network/internal/telemetry/inference"
 )
 
-// row is satisfied by both *sql.Row (Get) and *sql.Rows (Query, slice 3) so
-// scanInference can be shared by both call sites without duplicating the
+// rowScanner is satisfied by both *sql.Row (Get) and *sql.Rows (Query, slice 3)
+// so scanInference can be shared by both call sites without duplicating the
 // column list or the detail-unmarshal step.
-type row interface {
+type rowScanner interface {
 	Scan(dest ...any) error
 }
 
@@ -18,7 +18,7 @@ type row interface {
 // fully-populated inference.Inference. Token-stat scalar columns are NOT
 // read here in slice 1 — Get/Query rebuild Tokens entirely from the detail
 // blob via unmarshalDetail, which already carries the full TokenStats.
-func scanInference(r row) (inference.Inference, error) {
+func scanInference(r rowScanner) (inference.Inference, error) {
 	var (
 		id, model, endpoint, method, detailJSON string
 		atNanos                                 int64

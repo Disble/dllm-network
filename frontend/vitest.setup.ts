@@ -10,15 +10,19 @@ process.env.TZ = 'America/Bogota';
 // and would white-screen the full-tree smoke test.
 
 class ResizeObserverStub {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
+  observe(): void {
+    // no-op jsdom stub
+  }
+  unobserve(): void {
+    // no-op jsdom stub
+  }
+  disconnect(): void {
+    // no-op jsdom stub
+  }
 }
 
 const globalWithObservers = globalThis as typeof globalThis & {
   ResizeObserver?: typeof ResizeObserverStub;
 };
 
-if (globalWithObservers.ResizeObserver === undefined) {
-  globalWithObservers.ResizeObserver = ResizeObserverStub;
-}
+globalWithObservers.ResizeObserver ??= ResizeObserverStub;

@@ -12,10 +12,19 @@ var (
 	runWithExternalLoop func(onReady, onExit func()) = func(onReady, _ func()) {
 		go onReady()
 	}
-	setIcon     func([]byte)                  = func([]byte) {}
-	setTooltip  func(string)                  = func(string) {}
-	addMenuItem func(string, string) menuItem = func(string, string) menuItem { return nil }
-	quit        func()                        = func() {}
+	setIcon func([]byte) = func([]byte) {
+		// no-op seam stub; real implementation provided by platform binding.
+	}
+	setTooltip func(string) = func(string) {
+		// no-op seam stub; real implementation provided by platform binding.
+	}
+	addMenuItem func(string, string) menuItem = func(string, string) menuItem {
+		// no-op seam stub; real implementation provided by platform binding.
+		return nil
+	}
+	quit func() = func() {
+		// no-op seam stub; real implementation provided by platform binding.
+	}
 )
 
 // SystrayManager drives a background system tray icon with Open and Exit items.

@@ -46,6 +46,98 @@ func isTerminalRecvErr(err error) bool {
 		errors.Is(err, capture.ErrFakeExhausted)
 }
 
+// connParsers holds the request (ToServer) and response (FromServer) HTTP
+// parsers for a single connection keyed by its canonical FourTuple.
+type connParsers struct {
+	req  *httpx.Parser
+	resp *httpx.Parser
+}
+
+// captureState holds all per-connection bookkeeping for the recv-loop. Maps are
+// keyed by canonical FourTuple so the request and response for one logical TCP
+// connection share a row regardless of OS-reported src/dst swapping.
+type captureState struct {
+	reassembler    *reassembly.Reassembler
+	parsers        map[reassembly.FourTuple]*connParsers
+	requestBuf     map[reassembly.FourTuple]httpx.Message
+	reqID          map[reassembly.FourTuple]string
+	respAccum      map[reassembly.FourTuple][]byte
+	genAccum       map[reassembly.FourTuple]*inference.GenerationAccumulator
+	reqTime        map[reassembly.FourTuple]time.Time
+	firstTokenTime map[reassembly.FourTuple]time.Time
+	lastSeen       map[reassembly.FourTuple]time.Time
+	lastSweep      time.Time
+	runID          string
+	idSeq          int
+	current        inference.Inference
+	segCount       int
+}
+
+// newCaptureState initialises the per-connection bookkeeping for one recv-loop
+// run. Maps are pre-allocated so the first recv does not force an allocation on
+// the hot path.
+func newCaptureState() *captureState {
+	return &captureState{
+		reassembler:    reassembly.New(),
+		parsers:        make(map[reassembly.FourTuple]*connParsers),
+		requestBuf:     make(map[reassembly.FourTuple]httpx.Message),
+		reqID:          make(map[reassembly.FourTuple]string),
+		respAccum:      make(map[reassembly.FourTuple][]byte),
+		genAccum:       make(map[reassembly.FourTuple]*inference.GenerationAccumulator),
+		reqTime:        make(map[reassembly.FourTuple]time.Time),
+		firstTokenTime: make(map[reassembly.FourTuple]time.Time),
+		lastSeen:       make(map[reassembly.FourTuple]time.Time),
+		runID:          newRunID(),
+	}
+}
+
+// ensureParsers returns the connParsers for key, creating it with fresh HTTP
+// parsers if this is the first segment for this connection.
+func (s *captureState) ensureParsers(key reassembly.FourTuple) *connParsers {
+	cp, ok := s.parsers[key]
+	if !ok {
+		cp = &connParsers{req: httpx.NewParser(), resp: httpx.NewParser()}
+		s.parsers[key] = cp
+	}
+	return cp
+}
+
+// evictIdle drops bookkeeping for connections silent past captureIdleTimeout —
+// bounding memory for connections whose FIN was never observed (dropped
+// packets, ungraceful client exit). A connection whose request never completed
+// is surfaced as a PhaseCancelled inference, with its observed time span
+// preserved for the waterfall. Cancellations go to the recent ring (a full
+// list in every snapshot), NOT through current, so a sweep that cancels
+// several connections is not collapsed by the snapshot coalescer.
+func (s *captureState) evictIdle(now time.Time, p *inferencePipeline) {
+	for key, seen := range s.lastSeen {
+		if now.Sub(seen) < captureIdleTimeout {
+			continue
+		}
+		// reqTime[key] is set on the request and deleted on completion, so its
+		// presence means this connection's request never completed.
+		if reqAt, pending := s.reqTime[key]; pending {
+			if req, ok := s.requestBuf[key]; ok {
+				if cancelled, ok := buildCancelledInference(p.extractor, req, s.reqID[key], reqAt, seen); ok {
+					p.recent.RecordInferenceCancellation(cancelled)
+					if p.bus != nil {
+						p.bus.Publish(events.Event{Topic: topicInferenceCompleted, Payload: cancelled})
+					}
+				}
+			}
+		}
+		delete(s.parsers, key)
+		delete(s.requestBuf, key)
+		delete(s.reqID, key)
+		delete(s.respAccum, key)
+		delete(s.genAccum, key)
+		delete(s.reqTime, key)
+		delete(s.firstTokenTime, key)
+		delete(s.lastSeen, key)
+	}
+	s.reassembler.EvictIdle(now)
+}
+
 // inferencePipeline composes:
 //
 //	CaptureSource → reassembly.Reassembler → httpx.Parser (per direction) →
@@ -123,118 +215,24 @@ func (p *inferencePipeline) stop() {
 func (p *inferencePipeline) recvLoop(ctx context.Context) {
 	defer close(p.done)
 
-	// Per-connection state: one Reassembler and two Parsers (request ToServer,
-	// response FromServer) per 4-tuple.
-	type connParsers struct {
-		req  *httpx.Parser // ToServer
-		resp *httpx.Parser // FromServer
-	}
-	reassembler := reassembly.New()
-	parsers := make(map[reassembly.FourTuple]*connParsers)
-
-	// requestBuf holds the most recently parsed request Message per tuple so
-	// we can pair it with the terminal response.
-	requestBuf := make(map[reassembly.FourTuple]httpx.Message)
-
-	// reqID holds the stable inference id assigned when a request is buffered.
-	// Every Inference derived from that request (in-progress lines and the
-	// terminal completion) shares this id so the frontend upserts one row.
-	reqID := make(map[reassembly.FourTuple]string)
-
-	// respAccum accumulates the raw response bytes (NDJSON lines joined) per
-	// connection so the assembled response body can be surfaced in the detail
-	// inspector. Reset when a new request begins on the same keep-alive tuple.
-	respAccum := make(map[reassembly.FourTuple][]byte)
-
-	// genAccum incrementally builds the normalized Generation snapshot per
-	// logical exchange so live dashboard snapshots can surface partial output
-	// without rescanning the full assembled response on every chunk.
-	genAccum := make(map[reassembly.FourTuple]*inference.GenerationAccumulator)
-
-	// reqTime records when each request was observed, so latency for endpoints
-	// that carry no server-side durations (OpenAI /v1) can be derived from wall
-	// clock (request -> completion).
-	reqTime := make(map[reassembly.FourTuple]time.Time)
-
-	// firstTokenTime records when the FIRST chunk carrying generated content was
-	// observed, per connection. It splits the wall-clock span into prompt-
-	// processing (request -> first token, the TTFT) and generation (first token
-	// -> completion) so streamed exchanges without server-side durations still
-	// get a meaningful waterfall. Zero until the first content chunk is seen.
-	firstTokenTime := make(map[reassembly.FourTuple]time.Time)
-
-	// lastSeen records the most recent activity time per connection so idle
-	// connections can be evicted (bounding state growth) and stuck in-progress
-	// requests surfaced as cancelled. lastSweep throttles the sweep itself.
-	lastSeen := make(map[reassembly.FourTuple]time.Time)
-	var lastSweep time.Time
-
-	// runID namespaces this run's inference ids so they never collide with
-	// records persisted by a previous run (see inferenceID). idSeq is the
-	// monotonic per-run counter.
-	runID := newRunID()
-	idSeq := 0
-
-	// current is the running inference state emitted with every snapshot.
-	var current inference.Inference
-
-	// evictIdle drops bookkeeping for connections silent past
-	// captureIdleTimeout — bounding memory for connections whose FIN was never
-	// observed (dropped packets, ungraceful client exit). A connection whose
-	// request never completed is surfaced as a PhaseCancelled inference, with
-	// its observed time span preserved for the waterfall, so it does not hang
-	// "in progress" forever. Cancellations go to the recent ring (a full list
-	// in every snapshot), NOT through `current`, so a sweep that cancels
-	// several connections is not collapsed by the snapshot coalescer.
-	evictIdle := func(now time.Time) {
-		for key, seen := range lastSeen {
-			if now.Sub(seen) < captureIdleTimeout {
-				continue
-			}
-			// reqTime[key] is set on the request and deleted on completion, so
-			// its presence means this connection's request never completed.
-			if reqAt, pending := reqTime[key]; pending {
-				if req, ok := requestBuf[key]; ok {
-					if cancelled, ok := buildCancelledInference(p.extractor, req, reqID[key], reqAt, seen); ok {
-						p.recent.RecordInferenceCancellation(cancelled)
-						if p.bus != nil {
-							p.bus.Publish(events.Event{Topic: topicInferenceCompleted, Payload: cancelled})
-						}
-					}
-				}
-			}
-			delete(parsers, key)
-			delete(requestBuf, key)
-			delete(reqID, key)
-			delete(respAccum, key)
-			delete(genAccum, key)
-			delete(reqTime, key)
-			delete(firstTokenTime, key)
-			delete(lastSeen, key)
-		}
-		reassembler.EvictIdle(now)
-	}
+	s := newCaptureState()
 
 	status := p.src.Status()
 	capLog("recvLoop start: active=%v elevated=%v reason=%q", status.Active, status.Elevated, status.Reason)
-	segCount := 0
 
 	for {
 		seg, err := p.src.Recv(ctx)
 		if err != nil {
-			// Context cancelled (Quit), deadline exceeded, or fake source
-			// exhausted — exit cleanly.
 			if isTerminalRecvErr(err) {
-				capLog("recvLoop exit: %v (total segments=%d)", err, segCount)
+				capLog("recvLoop exit: %v (total segments=%d)", err, s.segCount)
 				return
 			}
-			// Any other driver-level error: non-fatal — keep running.
 			capLog("recv non-fatal error: %v", err)
 			continue
 		}
-		segCount++
+		s.segCount++
 		if len(seg.Payload) > 0 {
-			capLog("seg #%d dir=%d len=%d src=%s:%d dst=%s:%d seq=%d", segCount, seg.Dir, len(seg.Payload), seg.Tuple.SrcIP, seg.Tuple.SrcPort, seg.Tuple.DstIP, seg.Tuple.DstPort, seg.SeqNo)
+			capLog("seg #%d dir=%d len=%d src=%s:%d dst=%s:%d seq=%d", s.segCount, seg.Dir, len(seg.Payload), seg.Tuple.SrcIP, seg.Tuple.SrcPort, seg.Tuple.DstIP, seg.Tuple.DstPort, seg.SeqNo)
 		}
 
 		// Refresh status after each recv (source may have transitioned).
@@ -243,7 +241,7 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 		// Feed segment into reassembler. capture.Segment has identical fields to
 		// reassembly.Segment (FourTuple and Direction are type-aliases from the
 		// reassembly package), so the conversion is field-by-field.
-		streams := reassembler.Push(reassembly.Segment{
+		streams := s.reassembler.Push(reassembly.Segment{
 			Tuple:   seg.Tuple,
 			Dir:     seg.Dir,
 			Payload: seg.Payload,
@@ -253,167 +251,176 @@ func (p *inferencePipeline) recvLoop(ctx context.Context) {
 
 		for _, stream := range streams {
 			// Key per logical connection, not per packet direction: the OS
-			// reports the request (client→server) and response (server→client)
+			// reports the request (client->server) and response (server->client)
 			// with SWAPPED 4-tuples, so we canonicalise to pair them.
 			key := canonicalTuple(stream.Tuple)
-			lastSeen[key] = seg.At
-			cp, ok := parsers[key]
-			if !ok {
-				cp = &connParsers{req: httpx.NewParser(), resp: httpx.NewParser()}
-				parsers[key] = cp
-			}
+			s.lastSeen[key] = seg.At
 
-			var msgs []httpx.Message
+			cp := s.ensureParsers(key)
+
 			switch stream.Dir {
 			case capture.DirToServer:
-				msgs = cp.req.Feed(stream.Payload)
-				for _, m := range msgs {
-					capLog("  req msg: kind=%d method=%s path=%s", m.Kind, m.Method, m.Path)
-					if m.Kind == httpx.KindRequest {
-						requestBuf[key] = m
-						idSeq++
-						reqID[key] = inferenceID(runID, idSeq)
-						reqTime[key] = seg.At       // for wall-clock latency (OpenAI /v1)
-						delete(respAccum, key)      // fresh exchange on this connection
-						delete(firstTokenTime, key) // reset TTFT for keep-alive reuse
-						delete(genAccum, key)
-						genAccum[key] = inference.NewGenerationAccumulator(m.Path)
-
-						// Emit an in-progress inference the moment the request is
-						// observed, before any response byte arrives. For stream:false
-						// generations the server stays silent until done, so a
-						// response-only trigger would leave the row invisible for
-						// seconds. Pairing the request with an empty response yields
-						// PhaseInProgress (Tokens nil — never fabricated). Metadata-only
-						// polls (/api/tags, /api/ps, …) are skipped so they don't
-						// overwrite the displayed inference.
-						if inProgress, ok := p.extractor.FromExchange(m, httpx.Message{}); ok && inProgress.Status != inference.PhaseMetadataOnly {
-							inProgress.ID = reqID[key]
-							// Stamp the request observation time, not the extractor's
-							// per-call time.Now(): the in-progress row's At is the START
-							// the frontend measures live elapsed against. It MUST stay
-							// stable for the request's lifetime (see the response path).
-							inProgress.At = reqTime[key]
-							current = inProgress
-						}
-					}
-				}
+				msgs := cp.req.Feed(stream.Payload)
+				p.processRequestStream(key, msgs, seg.At, s)
 			case capture.DirFromServer:
-				msgs = cp.resp.Feed(stream.Payload)
-				for _, m := range msgs {
-					capLog("  resp msg: kind=%d status=%d done=%v bodyLen=%d", m.Kind, m.StatusCode, m.Done, len(m.Body))
-					if m.Kind != httpx.KindResponse {
-						continue
-					}
-					req, hasReq := requestBuf[key]
-					if !hasReq {
-						capLog("    no buffered request for key %s:%d/%s:%d", key.SrcIP, key.SrcPort, key.DstIP, key.DstPort)
-						continue
-					}
-					// Accumulate the raw response line so the detail inspector can
-					// show the assembled (streamed) response body.
-					acc := append(respAccum[key], m.Body...)
-					acc = append(acc, '\n')
-					respAccum[key] = acc
-
-					if genAccum[key] == nil {
-						genAccum[key] = inference.NewGenerationAccumulator(req.Path)
-					}
-					genAccum[key].Feed(m.Body)
-
-					// Observe the time-to-first-token: the first chunk carrying
-					// generated content marks the prompt->generation transition,
-					// used to split the waterfall for streams without server-side
-					// durations. req.Path is the endpoint the extractor classifies on.
-					if firstTokenTime[key].IsZero() && inference.HasGeneratedContent(req.Path, m.Body) {
-						firstTokenTime[key] = seg.At
-					}
-
-					inf, ok := p.extractor.FromExchange(req, m)
-					capLog("    FromExchange ok=%v status=%d model=%s hasTokens=%v", ok, inf.Status, inf.Model, inf.Tokens != nil)
-					if !ok {
-						continue
-					}
-					// Ignore non-inference exchanges (e.g. /api/tags, /api/ps,
-					// /api/version polls — including this app's own orchestrator
-					// polling). They must not overwrite the displayed inference.
-					if inf.Status == inference.PhaseMetadataOnly {
-						continue
-					}
-					// Stable id (shared across in-progress/completed) + assembled
-					// response body override the per-line extractor values.
-					inf.ID = reqID[key]
-					// Pin the in-progress row's At to the request observation time.
-					// The extractor stamps At=time.Now() on EVERY chunk, so without
-					// this the frontend's live elapsed (now - At) resets to ~0 on each
-					// streamed chunk — making the latency and waterfall cells flicker
-					// between a value and the "unavailable" em-dash. Completed rows keep
-					// the extractor's completion timestamp.
-					if inf.Status != inference.PhaseCompleted {
-						inf.At = reqTime[key]
-					}
-					inf.ResponseBody, inf.ResponseBodyTruncated = inference.TruncateBody(respAccum[key])
-					if gen := genAccum[key]; gen != nil {
-						inf.Generation = gen.Build()
-					}
-					// OpenAI streaming completes on the [DONE] sentinel, which carries
-					// no counts — the `usage` arrived in an earlier SSE chunk. Recover
-					// the counts from the assembled body when the per-line extractor
-					// could not (Tokens still nil on a completed exchange).
-					if inf.Status == inference.PhaseCompleted && inf.Tokens == nil {
-						inf.Tokens = inference.ExtractOpenAIStats(respAccum[key])
-						if inf.Tokens == nil {
-							// No usage chunk (include_usage not set): still surface the
-							// observed wall-clock timing so latency and the waterfall
-							// render. Counts stay honestly zero — never fabricated.
-							inf.Tokens = &inference.TokenStats{}
-						}
-						deriveStreamingTiming(inf.Tokens, reqTime[key], firstTokenTime[key], seg.At)
-					}
-					current = inf
-					if inf.Status == inference.PhaseCompleted {
-						p.recent.RecordInferenceCompletion(inf)
-						// Sibling durable-write trigger (design D7): the ring
-						// above serves the live dashboard projection; this
-						// publish feeds internal/persistence.Subscriber for
-						// cross-process durable storage. Bus.Publish is
-						// synchronous but the subscriber's handler only does a
-						// non-blocking channel send, so this never stalls the
-						// capture loop.
-						if p.bus != nil {
-							p.bus.Publish(events.Event{Topic: topicInferenceCompleted, Payload: inf})
-						}
-						delete(respAccum, key) // exchange done; release buffer
-						delete(genAccum, key)
-						delete(reqTime, key)
-						delete(firstTokenTime, key)
-					}
-				}
+				msgs := cp.resp.Feed(stream.Payload)
+				p.processResponseStream(key, msgs, seg.At, s)
 			}
 		}
 
 		// Periodically evict idle connections (bounding state) and surface any
 		// stuck in-progress request as cancelled. Driven by observed segment
 		// time so it costs nothing between sweeps.
-		if lastSweep.IsZero() {
-			lastSweep = seg.At
-		} else if seg.At.Sub(lastSweep) >= captureSweepInterval {
-			evictIdle(seg.At)
-			lastSweep = seg.At
+		if s.lastSweep.IsZero() {
+			s.lastSweep = seg.At
+		} else if seg.At.Sub(s.lastSweep) >= captureSweepInterval {
+			s.evictIdle(seg.At, p)
+			s.lastSweep = seg.At
 		}
 
 		// Build CaptureInput from live source status.
-		captureInput := buildCaptureInput(status, current)
 
-		inferenceState := dashboard.InferenceState{
-			Current: current,
-			Recent:  p.recent.InferenceEvents(),
-		}
+		captureInput := buildCaptureInput(status, s.current)
 
 		_, _ = p.publisher.Publish(ctx, dashboard.ProjectionInput{
-			Capture:   captureInput,
-			Inference: inferenceState,
+			Capture: captureInput,
+			Inference: dashboard.InferenceState{
+				Current: s.current,
+				Recent:  p.recent.InferenceEvents(),
+			},
 		})
+	}
+}
+
+// processRequestStream handles parsed request messages for a connection.
+// It buffers the request, assigns a stable inference id, resets per-exchange
+// state for keep-alive reuse, and emits an in-progress inference for the
+// live dashboard.
+func (p *inferencePipeline) processRequestStream(key reassembly.FourTuple, msgs []httpx.Message, at time.Time, s *captureState) {
+	for _, m := range msgs {
+		capLog("  req msg: kind=%d method=%s path=%s", m.Kind, m.Method, m.Path)
+		if m.Kind != httpx.KindRequest {
+			continue
+		}
+		s.requestBuf[key] = m
+		s.idSeq++
+		s.reqID[key] = inferenceID(s.runID, s.idSeq)
+		s.reqTime[key] = at        // for wall-clock latency (OpenAI /v1)
+		delete(s.respAccum, key)   // fresh exchange on this connection
+		delete(s.firstTokenTime, key) // reset TTFT for keep-alive reuse
+		delete(s.genAccum, key)
+		s.genAccum[key] = inference.NewGenerationAccumulator(m.Path)
+
+		// Emit an in-progress inference the moment the request is observed,
+		// before any response byte arrives. For stream:false generations the
+		// server stays silent until done, so a response-only trigger would leave
+		// the row invisible for seconds. Pairing the request with an empty
+		// response yields PhaseInProgress (Tokens nil — never fabricated).
+		// Metadata-only polls (/api/tags, /api/ps, …) are skipped so they don't
+		// overwrite the displayed inference.
+		if inProgress, ok := p.extractor.FromExchange(m, httpx.Message{}); ok && inProgress.Status != inference.PhaseMetadataOnly {
+			inProgress.ID = s.reqID[key]
+			// Stamp the request observation time, not the extractor's per-call
+			// time.Now(): the in-progress row's At is the START the frontend
+			// measures live elapsed against. It MUST stay stable for the
+			// request's lifetime (see the response path).
+			inProgress.At = s.reqTime[key]
+			s.current = inProgress
+		}
+	}
+}
+
+// processResponseStream handles parsed response messages for a connection.
+// It accumulates the assembled body, tracks time-to-first-token, recovers
+// token counts from streamed completions, publishes completed inferences to
+// the recent ring and the durable persistence bus, and releases per-exchange
+// state when an exchange finishes.
+func (p *inferencePipeline) processResponseStream(key reassembly.FourTuple, msgs []httpx.Message, at time.Time, s *captureState) {
+	for _, m := range msgs {
+		capLog("  resp msg: kind=%d status=%d done=%v bodyLen=%d", m.Kind, m.StatusCode, m.Done, len(m.Body))
+		if m.Kind != httpx.KindResponse {
+			continue
+		}
+		req, hasReq := s.requestBuf[key]
+		if !hasReq {
+			capLog("    no buffered request for key %s:%d/%s:%d", key.SrcIP, key.SrcPort, key.DstIP, key.DstPort)
+			continue
+		}
+		// Accumulate the raw response line so the detail inspector can show
+		// the assembled (streamed) response body.
+		acc := append(s.respAccum[key], m.Body...)
+		acc = append(acc, '\n')
+		s.respAccum[key] = acc
+
+		if s.genAccum[key] == nil {
+			s.genAccum[key] = inference.NewGenerationAccumulator(req.Path)
+		}
+		s.genAccum[key].Feed(m.Body)
+
+		// Observe the time-to-first-token: the first chunk carrying generated
+		// content marks the prompt->generation transition, used to split the
+		// waterfall for streams without server-side durations.
+		if s.firstTokenTime[key].IsZero() && inference.HasGeneratedContent(req.Path, m.Body) {
+			s.firstTokenTime[key] = at
+		}
+
+		inf, ok := p.extractor.FromExchange(req, m)
+		capLog("    FromExchange ok=%v status=%d model=%s hasTokens=%v", ok, inf.Status, inf.Model, inf.Tokens != nil)
+		if !ok {
+			continue
+		}
+		// Ignore non-inference exchanges (e.g. /api/tags, /api/ps, /api/version
+		// polls — including this app's own orchestrator polling). They must not
+		// overwrite the displayed inference.
+		if inf.Status == inference.PhaseMetadataOnly {
+			continue
+		}
+		// Stable id (shared across in-progress/completed) + assembled response
+		// body override the per-line extractor values.
+		inf.ID = s.reqID[key]
+		// Pin the in-progress row's At to the request observation time. The
+		// extractor stamps At=time.Now() on EVERY chunk, so without this the
+		// frontend's live elapsed (now - At) resets to ~0 on each streamed
+		// chunk — making the latency and waterfall cells flicker between a
+		// value and the "unavailable" em-dash. Completed rows keep the
+		// extractor's completion timestamp.
+		if inf.Status != inference.PhaseCompleted {
+			inf.At = s.reqTime[key]
+		}
+		inf.ResponseBody, inf.ResponseBodyTruncated = inference.TruncateBody(s.respAccum[key])
+		if gen := s.genAccum[key]; gen != nil {
+			inf.Generation = gen.Build()
+		}
+		// OpenAI streaming completes on the [DONE] sentinel, which carries no
+		// counts — the `usage` arrived in an earlier SSE chunk. Recover the
+		// counts from the assembled body when the per-line extractor could not
+		// (Tokens still nil on a completed exchange).
+		if inf.Status == inference.PhaseCompleted && inf.Tokens == nil {
+			inf.Tokens = inference.ExtractOpenAIStats(s.respAccum[key])
+			if inf.Tokens == nil {
+				// No usage chunk (include_usage not set): still surface the
+				// observed wall-clock timing so latency and the waterfall render.
+				inf.Tokens = &inference.TokenStats{}
+			}
+			deriveStreamingTiming(inf.Tokens, s.reqTime[key], s.firstTokenTime[key], at)
+		}
+		s.current = inf
+		if inf.Status == inference.PhaseCompleted {
+			p.recent.RecordInferenceCompletion(inf)
+			// Sibling durable-write trigger (design D7): the ring above serves
+			// the live dashboard projection; this publish feeds
+			// internal/persistence.Subscriber for cross-process durable storage.
+			// Bus.Publish is synchronous but the subscriber's handler only does
+			// a non-blocking channel send, so this never stalls the capture
+			// loop.
+			if p.bus != nil {
+				p.bus.Publish(events.Event{Topic: topicInferenceCompleted, Payload: inf})
+			}
+			delete(s.respAccum, key) // exchange done; release buffer
+			delete(s.genAccum, key)
+			delete(s.reqTime, key)
+			delete(s.firstTokenTime, key)
+		}
 	}
 }
 

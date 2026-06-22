@@ -21,33 +21,32 @@ afterEach(() => {
   resetInferenceStore();
 });
 
-const strippedTerminal: InferenceEvent = {
-  at: '2026-06-19T04:20:00Z',
-  endpoint: '/v1/chat/completions',
-  method: 'POST',
-  model: 'gemma4:12b',
-  promptSize: 1234,
-  streaming: true,
-  status: 1,
-  tokens: null,
-  id: 'inf-1',
-  // bodies intentionally absent — the snapshot recent list is metadata-only
-};
-
-const seed = (event: InferenceEvent, asRecent: boolean) => {
-  const snapshot: DashboardSnapshot = {
-    ...EMPTY_DASHBOARD_SNAPSHOT,
-    inference: {
-      current: asRecent ? EMPTY_DASHBOARD_SNAPSHOT.inference.current : event,
-      recent: asRecent ? [event] : [],
-    },
-  };
-  act(() => {
-    useInferenceStore.getState().ingest(snapshot);
-  });
-};
-
 describe('useInferenceDetail on-demand body fetch', () => {
+  const strippedTerminal: InferenceEvent = {
+    at: '2026-06-19T04:20:00Z',
+    endpoint: '/v1/chat/completions',
+    method: 'POST',
+    model: 'gemma4:12b',
+    promptSize: 1234,
+    streaming: true,
+    status: 1,
+    tokens: null,
+    id: 'inf-1',
+    // bodies intentionally absent — the snapshot recent list is metadata-only
+  };
+
+  const seed = (event: InferenceEvent, asRecent: boolean) => {
+    const snapshot: DashboardSnapshot = {
+      ...EMPTY_DASHBOARD_SNAPSHOT,
+      inference: {
+        current: asRecent ? EMPTY_DASHBOARD_SNAPSHOT.inference.current : event,
+        recent: asRecent ? [event] : [],
+      },
+    };
+    act(() => {
+      useInferenceStore.getState().ingest(snapshot);
+    });
+  };
   it('fetches the full record for the selected terminal row', async () => {
     seed(strippedTerminal, true);
 

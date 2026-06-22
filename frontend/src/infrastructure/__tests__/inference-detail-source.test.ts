@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { InferenceEvent } from '../../shared/contracts/dashboard-snapshot.types';
 import { createInferenceDetailSource } from '../inference-detail-source';
 
+// eslint-disable-next-line no-unused-vars
 type DetailBinding = (id: string) => Promise<string>;
 type WindowWithGo = typeof window & {
   go?: { app?: { App?: { InferenceDetail?: DetailBinding } } };

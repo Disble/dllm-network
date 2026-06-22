@@ -35,8 +35,12 @@ export function useInferenceDetail(
 
   const [detail, setDetail] = useState<InferenceEvent | null>(null);
   useEffect(() => {
-    // Drop any detail from the previous selection so we never show one row's
-    // body against another row's metadata while the new fetch is in flight.
+    // The detail is fetched asynchronously from the durable store. We
+    // intentionally drop the previous row's detail immediately when the
+    // selection changes so the panel never renders one row's metadata with
+    // another row's body while the new fetch is in flight. This is a classic
+    // async-load pattern; deriving state would require blocking the UI.
+    // eslint-disable-next-line react-doctor/no-adjust-state-on-prop-change
     setDetail(null);
     if (selectedId === null) {
       return;

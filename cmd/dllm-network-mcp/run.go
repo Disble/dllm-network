@@ -1,5 +1,5 @@
 // Package main implements the stdio MCP sidecar binary
-// (cmd/ollama-telemetry-mcp). It is a thin process that opens the SAME
+// (cmd/dllm-network-mcp). It is a thin process that opens the SAME
 // SQLite database the GUI app writes to (resolved via
 // internal/store/sqlite.DefaultPath, design D3/D7) as a READ-ONLY
 // connection, builds the transport-decoupled MCP server core
@@ -18,7 +18,7 @@ import (
 	"errors"
 	"fmt"
 
-	"ollama-telemetry/internal/store"
+	"dllm-network/internal/store"
 )
 
 // closer is satisfied by *sqlite.Store (and any test double) so run can
@@ -54,7 +54,7 @@ type runDeps struct {
 // yet — i.e. the GUI app has never run on this machine. The sidecar is a
 // reader; it must fail clearly here rather than silently creating an empty
 // database that would mask the real "no data yet" condition.
-var errDBNotFound = errors.New("telemetry database not found — start the ollama-telemetry GUI app at least once before running the MCP sidecar")
+var errDBNotFound = errors.New("telemetry database not found — start the dllm-network GUI app at least once before running the MCP sidecar")
 
 // run wires path resolution, the missing-DB guard, the read-only store
 // open, the MCP serve call, and cleanup. It returns a non-nil error for

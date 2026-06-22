@@ -4,7 +4,7 @@ import (
 	"embed"
 	"log"
 
-	appcore "ollama-telemetry/internal/app"
+	appcore "dllm-network/internal/app"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -18,7 +18,7 @@ func main() {
 	app := appcore.New()
 
 	err := wails.Run(&options.App{
-		Title:             "Ollama Telemetry",
+		Title:             "dllm-network",
 		Width:             1280,
 		Height:            800,
 		StartHidden:       true,

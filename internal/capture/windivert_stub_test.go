@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/capture"
+	"dllm-network/internal/capture"
 )
 
 // TestStubSource_ReturnsInactiveStatusWithNoPanic asserts that on non-Windows

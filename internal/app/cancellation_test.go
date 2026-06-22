@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/capture/httpx"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/capture/httpx"
+	"dllm-network/internal/telemetry/inference"
 )
 
 func TestBuildCancelledInference_InferenceEndpoint(t *testing.T) {

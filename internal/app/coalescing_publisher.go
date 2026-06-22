@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"ollama-telemetry/internal/dashboard"
+	"dllm-network/internal/dashboard"
 )
 
 // defaultCaptureEmitInterval bounds how often the capture pipeline's snapshot

@@ -37,7 +37,7 @@ linters-settings:
         files:
           - "**/internal/mcp/**"
         deny:
-          - pkg: "ollama-telemetry/internal/capture"
+          - pkg: "dllm-network/internal/capture"
             desc: "internal/mcp is read-only and must not depend on the write-side capture pipeline; depend on store.InferenceReader instead"
 
       # SDK isolation (design D6/D8): the MCP SDK is a transport/protocol

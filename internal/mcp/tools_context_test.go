@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/store"
+	"dllm-network/internal/store"
 )
 
 func TestResolveInferenceContextHandler_ReturnsReaderUniverse(t *testing.T) {

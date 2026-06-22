@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"ollama-telemetry/internal/capture/httpx"
+	"dllm-network/internal/capture/httpx"
 )
 
 // ---- helpers ----------------------------------------------------------------
@@ -361,7 +361,7 @@ func TestExtractor_RunsWithoutElevation(t *testing.T) {
 		t.Fatalf("import package: %v", err)
 	}
 
-	forbidden := []string{"syscall", "ollama-telemetry/internal/capture/reassembly"}
+	forbidden := []string{"syscall", "dllm-network/internal/capture/reassembly"}
 	for _, imp := range pkg.Imports {
 		for _, bad := range forbidden {
 			if imp == bad || strings.HasPrefix(imp, bad+"/") {

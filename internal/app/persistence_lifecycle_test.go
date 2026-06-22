@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/events"
-	"ollama-telemetry/internal/telemetry"
-	"ollama-telemetry/internal/telemetry/inference"
-	"ollama-telemetry/internal/telemetry/orchestrator"
+	"dllm-network/internal/events"
+	"dllm-network/internal/telemetry"
+	"dllm-network/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/orchestrator"
 )
 
 // TestAppStartup_StartsPersistenceSubscriber asserts that Startup starts the

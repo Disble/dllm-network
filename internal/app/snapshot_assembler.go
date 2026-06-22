@@ -4,10 +4,10 @@ import (
 	"context"
 	"sync"
 
-	"ollama-telemetry/internal/activity"
-	"ollama-telemetry/internal/dashboard"
-	"ollama-telemetry/internal/telemetry/ollama"
-	"ollama-telemetry/internal/telemetry/orchestrator"
+	"dllm-network/internal/activity"
+	"dllm-network/internal/dashboard"
+	"dllm-network/internal/telemetry/ollama"
+	"dllm-network/internal/telemetry/orchestrator"
 )
 
 // snapshotAssembler is the single shared state that prevents the two emitter

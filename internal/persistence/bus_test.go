@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/events"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/events"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // TestSubscriber_SubscribeToBus_PersistsPublishedInference asserts the

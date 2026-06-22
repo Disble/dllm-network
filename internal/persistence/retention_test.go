@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/events"
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/store/sqlite"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/events"
+	"dllm-network/internal/store"
+	"dllm-network/internal/store/sqlite"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // TestSubscriber_PruneOnFlush_LiveWiring is the integration proof (verify

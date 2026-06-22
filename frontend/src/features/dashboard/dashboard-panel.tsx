@@ -11,7 +11,7 @@ export function DashboardPanel({ viewModel: vm }: Readonly<DashboardPanelProps>)
       <header className="telemetry-panel__header">
         <div className="telemetry-panel__heading">
           <p className="eyebrow">Passive-only telemetry</p>
-          <h2 className="telemetry-panel__title">Ollama Telemetry</h2>
+          <h2 className="telemetry-panel__title">dllm-network</h2>
           <p className="telemetry-panel__published">Published {vm.publishedAtLabel}</p>
         </div>
         <span className={`telemetry-panel__freshness${vm.isFresh ? ' telemetry-panel__freshness--fresh' : ''}`}>

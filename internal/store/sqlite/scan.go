@@ -3,7 +3,7 @@ package sqlite
 import (
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // row is satisfied by both *sql.Row (Get) and *sql.Rows (Query, slice 3) so

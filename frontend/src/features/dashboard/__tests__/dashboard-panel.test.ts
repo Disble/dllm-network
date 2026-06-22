@@ -20,7 +20,7 @@ describe('DashboardPanel', () => {
     render(createElement(DashboardPanel, { viewModel }));
 
     expect(screen.getByText('Passive-only telemetry')).toBeTruthy();
-    expect(screen.getByText('Ollama Telemetry')).toBeTruthy();
+    expect(screen.getByText('dllm-network')).toBeTruthy();
     expect(screen.getByText('Collection mode')).toBeTruthy();
     expect(screen.getByText('Snapshot time')).toBeTruthy();
     expect(screen.getByText('Status')).toBeTruthy();

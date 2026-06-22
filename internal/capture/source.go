@@ -8,7 +8,7 @@ import (
 	"context"
 	"time"
 
-	"ollama-telemetry/internal/capture/reassembly"
+	"dllm-network/internal/capture/reassembly"
 )
 
 // FourTuple identifies a TCP connection by its endpoint addresses. It is the

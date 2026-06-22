@@ -1,6 +1,6 @@
 ---
 name: app-theme
-description: "Trigger: styling, CSS, theme, colors, design tokens, charts, or new UI components in ollama-telemetry frontend. Apply the monochrome design system."
+description: "Trigger: styling, CSS, theme, colors, design tokens, charts, or new UI components in dllm-network frontend. Apply the monochrome design system."
 license: Apache-2.0
 metadata:
   author: gentleman-programming
@@ -9,7 +9,7 @@ metadata:
 
 ## Activation Contract
 
-Apply when writing, restyling, or reviewing any frontend UI in `ollama-telemetry/frontend` — components, CSS, charts, colors, or layout. This is the single source of truth for the app's look.
+Apply when writing, restyling, or reviewing any frontend UI in `dllm-network/frontend` — components, CSS, charts, colors, or layout. This is the single source of truth for the app's look.
 
 ## Hard Rules
 

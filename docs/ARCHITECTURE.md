@@ -47,12 +47,12 @@ capture (WinDivert)            read side
 | Durable store | `internal/store/sqlite` | WAL-mode SQLite, single writer (GUI), read-only reader (sidecar) |
 | Read port | `internal/store` (`InferenceReader`/`InferenceWriter`) | Segregated interfaces; only `sqlite.Store` implements both |
 | MCP core | `internal/mcp` | Three staged tools over `store.InferenceReader`, transport-agnostic |
-| Sidecar | `cmd/ollama-telemetry-mcp` | Standalone binary: opens the DB read-only, serves MCP over stdio |
+| Sidecar | `cmd/dllm-network-mcp` | Standalone binary: opens the DB read-only, serves MCP over stdio |
 
 ## The WAL seam: one writer, many readers
 
 SQLite's WAL mode allows exactly the split this project needs: one
-read-write connection (the GUI app, started once per `ollama-telemetry`
+read-write connection (the GUI app, started once per `dllm-network`
 session) and any number of read-only connections (the stdio sidecar,
 launched independently by an MCP client such as Claude Desktop).
 
@@ -76,13 +76,13 @@ for the regression test that locks this in.
 **What `query_only` does NOT do:** prevent file creation on a missing
 database. That is a separate failure mode (a bare-path DSN against a
 nonexistent file silently creates an empty one) and is handled one layer up,
-at the sidecar's wiring boundary: `cmd/ollama-telemetry-mcp/run.go` checks
+at the sidecar's wiring boundary: `cmd/dllm-network-mcp/run.go` checks
 `os.Stat` on the resolved path *before* ever calling `OpenReadOnly`, and
 fails fast with a clear "start the GUI app first" message if the file does
 not exist yet.
 
 Both connections resolve the same path via `sqlite.DefaultPath()`
-(`%LOCALAPPDATA%/ollama-telemetry/telemetry.db` on Windows, via
+(`%LOCALAPPDATA%/dllm-network/telemetry.db` on Windows, via
 `os.UserCacheDir()`) — sharing one resolver, not two independent ones,
 guarantees the GUI and the sidecar can never disagree about where the
 database lives.
@@ -105,7 +105,7 @@ an oversight:
 **Why SQLite at all, if it's not a history archive:** durable-on-disk
 storage here is justified by **cross-process IPC**, not by long-term
 retention. The GUI (writer) and the stdio sidecar (reader, `cmd/
-ollama-telemetry-mcp`) are two separate OS processes — an in-memory store
+dllm-network-mcp`) are two separate OS processes — an in-memory store
 cannot be shared between them, so a shared file is the seam, and SQLite/WAL
 is the simplest pure-Go way to make that seam safe for one writer + many
 readers (see [The WAL seam](#the-wal-seam-one-writer-many-readers) above).
@@ -210,7 +210,7 @@ on code review alone.
 |------|----------------|------|-----|
 | `inference-domain-purity` | `database/sql` | `internal/telemetry/inference/**` | Domain type stays driver-free; persistence is `internal/store/sqlite`'s job |
 | `inference-domain-purity` | `github.com/modelcontextprotocol/go-sdk` | `internal/telemetry/inference/**` | Domain type stays transport-free; MCP wiring is `internal/mcp`'s job |
-| `mcp-not-capture` | `ollama-telemetry/internal/capture` | `internal/mcp/**` | MCP is read-only; it must depend on `store.InferenceReader`, never reach into the write-side capture pipeline |
+| `mcp-not-capture` | `dllm-network/internal/capture` | `internal/mcp/**` | MCP is read-only; it must depend on `store.InferenceReader`, never reach into the write-side capture pipeline |
 | `sdk-confined-to-mcp` | `github.com/modelcontextprotocol/go-sdk` | everywhere except `internal/mcp/**` | Keeps every other package buildable/testable without the SDK; confines protocol churn to one package |
 
 The linter enforces the **what** (the import is or isn't allowed); this doc

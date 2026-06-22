@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
 )
 
 func TestSearchInferencesHandler_MapsArgsToSearchQueryAndReturnsSummaries(t *testing.T) {

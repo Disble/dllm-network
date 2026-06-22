@@ -3,7 +3,7 @@ package tray
 import (
 	"fmt"
 
-	"ollama-telemetry/internal/events"
+	"dllm-network/internal/events"
 )
 
 const TopicLifecycleCommand = "tray.lifecycle.command"

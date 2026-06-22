@@ -15,8 +15,8 @@ import (
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver for database/sql
 
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // Compile-time assertions: Store implements both segregated ports from
@@ -60,7 +60,7 @@ const writerDSNOptions = "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&
 //
 // query_only does NOT prevent file creation on a missing database file; that
 // case is handled by the stdio sidecar's pre-open os.Stat existence check
-// (cmd/ollama-telemetry-mcp/run.go), deliberately not by this DSN.
+// (cmd/dllm-network-mcp/run.go), deliberately not by this DSN.
 const readOnlyDSNOptions = "?mode=ro&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=query_only(true)"
 
 // Store is the SQLite-backed implementation of the (forthcoming)

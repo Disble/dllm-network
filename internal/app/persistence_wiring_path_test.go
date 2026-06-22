@@ -3,11 +3,11 @@ package app
 import (
 	"testing"
 
-	"ollama-telemetry/internal/store/sqlite"
+	"dllm-network/internal/store/sqlite"
 )
 
 // TestDefaultDBPath_DelegatesToSharedSqliteResolver locks in that App's
-// defaultDBPath and the stdio sidecar (cmd/ollama-telemetry-mcp) resolve the
+// defaultDBPath and the stdio sidecar (cmd/dllm-network-mcp) resolve the
 // exact same file: defaultDBPath must be a thin wrapper over
 // sqlite.DefaultPath(), the shared resolver, not a parallel reimplementation
 // that could silently drift from it.

@@ -210,7 +210,7 @@ func TestReassembler_RunsWithoutElevation(t *testing.T) {
 		t.Fatalf("import package: %v", err)
 	}
 
-	forbidden := []string{"syscall", "ollama-telemetry/internal/capture"}
+	forbidden := []string{"syscall", "dllm-network/internal/capture"}
 
 	for _, imp := range pkg.Imports {
 		for _, bad := range forbidden {

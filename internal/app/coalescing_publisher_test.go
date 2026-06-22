@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/dashboard"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/dashboard"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // fakeProjector records every ProjectionInput forwarded to it, distinguished

@@ -17,7 +17,7 @@ describe('AppShell', () => {
   it('renders the brand, the nav rail and the content', () => {
     render(createElement(AppShell, null, createElement('p', null, 'DASHBOARD CONTENT')));
 
-    expect(screen.getByText('Ollama Telemetry')).toBeTruthy();
+    expect(screen.getByText('dllm-network')).toBeTruthy();
     expect(screen.getByLabelText('Sections')).toBeTruthy();
     expect(screen.getByText('DASHBOARD CONTENT')).toBeTruthy();
   });

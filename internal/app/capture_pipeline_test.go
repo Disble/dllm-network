@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/capture"
-	"ollama-telemetry/internal/dashboard"
-	"ollama-telemetry/internal/telemetry"
-	"ollama-telemetry/internal/telemetry/inference"
-	"ollama-telemetry/internal/telemetry/orchestrator"
+	"dllm-network/internal/capture"
+	"dllm-network/internal/dashboard"
+	"dllm-network/internal/telemetry"
+	"dllm-network/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/orchestrator"
 )
 
 // TestDependencies_CaptureSourceNilDefaultsToNoop asserts that NewWithDependencies

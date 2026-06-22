@@ -1,4 +1,4 @@
-module ollama-telemetry
+module dllm-network
 
 go 1.26.0
 

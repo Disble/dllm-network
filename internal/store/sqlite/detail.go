@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // detail is the JSON-encoded payload stored in the inferences.detail column.

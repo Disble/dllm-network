@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/capture"
+	"dllm-network/internal/capture"
 )
 
 // TestWinDivertSource_OpenLifecycle is an INTEGRATION test that exercises the

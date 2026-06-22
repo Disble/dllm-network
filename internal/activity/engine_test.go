@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/ollama"
-	"ollama-telemetry/internal/telemetry/orchestrator"
-	"ollama-telemetry/internal/telemetry/system"
+	"dllm-network/internal/telemetry/ollama"
+	"dllm-network/internal/telemetry/orchestrator"
+	"dllm-network/internal/telemetry/system"
 )
 
 func TestEngineInferEmitsExplicitInferredActivity(t *testing.T) {

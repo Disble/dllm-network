@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // TestOpenReadOnly_RejectsWrites locks in the hardening fix for a real gotcha

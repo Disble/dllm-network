@@ -3,8 +3,8 @@ package mcp
 import (
 	"context"
 
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // fakeReader is an in-memory test double for store.InferenceReader. It lets

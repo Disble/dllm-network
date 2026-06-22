@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // defaultBatchSize and defaultFlushInterval implement design D4's batch

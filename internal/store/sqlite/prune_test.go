@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // seedInferences saves count synthetic inferences spaced one minute apart

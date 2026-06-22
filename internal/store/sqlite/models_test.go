@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // TestStore_Models_DistinctNoDuplicates (spec: "Distinct models list") seeds

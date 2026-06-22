@@ -19,7 +19,7 @@ func TestPhase1WailsScaffoldFiles(t *testing.T) {
 		{
 			name:    "go module foundation declares wails dependency",
 			path:    "go.mod",
-			expects: []string{"module ollama-telemetry", "go 1.26.0", "github.com/wailsapp/wails/v2 v2.12.0"},
+			expects: []string{"module dllm-network", "go 1.26.0", "github.com/wailsapp/wails/v2 v2.12.0"},
 		},
 		{
 			name:    "main enables hidden startup shell",

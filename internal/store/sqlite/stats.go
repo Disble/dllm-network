@@ -6,7 +6,7 @@ import (
 	"math"
 	"sort"
 
-	"ollama-telemetry/internal/store"
+	"dllm-network/internal/store"
 )
 
 // Stats implements store.InferenceReader.Stats: tokens/sec and latency

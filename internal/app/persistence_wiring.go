@@ -3,9 +3,9 @@ package app
 import (
 	"context"
 
-	"ollama-telemetry/internal/events"
-	"ollama-telemetry/internal/persistence"
-	"ollama-telemetry/internal/store/sqlite"
+	"dllm-network/internal/events"
+	"dllm-network/internal/persistence"
+	"dllm-network/internal/store/sqlite"
 )
 
 // closer is satisfied by *sqlite.Store and any test double that needs to
@@ -79,7 +79,7 @@ func (pl *persistenceLifecycle) stop() {
 // defaultDBPath resolves the production SQLite database path under the
 // user's local (non-roaming) data directory, creating the parent directory
 // if needed. It delegates to sqlite.DefaultPath(), the SHARED resolver both
-// this GUI writer and the stdio sidecar (cmd/ollama-telemetry-mcp) use, so
+// this GUI writer and the stdio sidecar (cmd/dllm-network-mcp) use, so
 // the two processes can never resolve different files. defaultDBPath exists
 // as a thin wrapper (rather than every caller importing sqlite directly)
 // purely to keep this package's existing call sites unchanged.

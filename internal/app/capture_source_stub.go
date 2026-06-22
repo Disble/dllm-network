@@ -2,7 +2,7 @@
 
 package app
 
-import "ollama-telemetry/internal/capture"
+import "dllm-network/internal/capture"
 
 // newWinDivertCapture returns the noop source on non-Windows platforms.
 // Capture requires WinDivert which is Windows-only; on other platforms the

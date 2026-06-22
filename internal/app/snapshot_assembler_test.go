@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/dashboard"
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
-	"ollama-telemetry/internal/telemetry/ollama"
-	"ollama-telemetry/internal/telemetry/orchestrator"
+	"dllm-network/internal/dashboard"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/ollama"
+	"dllm-network/internal/telemetry/orchestrator"
 )
 
 // snapshotCollector wraps a wailsEmitter (dashboard.Emitter) and collects

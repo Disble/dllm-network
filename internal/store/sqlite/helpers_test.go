@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // openSeededStore opens a fresh temp-dir Store and saves seed, returning the

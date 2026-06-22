@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // fakeReader is a minimal in-memory store.InferenceReader test double for

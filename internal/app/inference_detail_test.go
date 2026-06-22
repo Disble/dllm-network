@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // fakeInferenceReader is a store.InferenceReader test double; only Get is

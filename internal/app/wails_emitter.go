@@ -3,10 +3,10 @@ package app
 import (
 	"context"
 
-	"ollama-telemetry/internal/activity"
-	"ollama-telemetry/internal/dashboard"
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/orchestrator"
+	"dllm-network/internal/activity"
+	"dllm-network/internal/dashboard"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/orchestrator"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )

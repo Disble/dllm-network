@@ -8,13 +8,13 @@ import (
 	"strconv"
 	"time"
 
-	"ollama-telemetry/internal/capture"
-	"ollama-telemetry/internal/capture/httpx"
-	"ollama-telemetry/internal/capture/reassembly"
-	"ollama-telemetry/internal/dashboard"
-	"ollama-telemetry/internal/events"
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/capture"
+	"dllm-network/internal/capture/httpx"
+	"dllm-network/internal/capture/reassembly"
+	"dllm-network/internal/dashboard"
+	"dllm-network/internal/events"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // topicInferenceCompleted is the events.Bus topic the capture pipeline

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"ollama-telemetry/internal/mcp"
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/store/sqlite"
+	"dllm-network/internal/mcp"
+	"dllm-network/internal/store"
+	"dllm-network/internal/store/sqlite"
 )
 
 // main wires the production seams and delegates to run. It stays thin —
@@ -16,7 +16,7 @@ import (
 // real stdio or a real database file.
 func main() {
 	if err := run(context.Background(), productionDeps()); err != nil {
-		fmt.Fprintln(os.Stderr, "ollama-telemetry-mcp:", err)
+		fmt.Fprintln(os.Stderr, "dllm-network-mcp:", err)
 		os.Exit(1)
 	}
 }

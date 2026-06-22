@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"ollama-telemetry/internal/events"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/events"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // topicInferenceCompleted is the events.Bus topic the capture pipeline

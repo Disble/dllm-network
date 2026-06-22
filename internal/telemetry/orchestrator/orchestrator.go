@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"ollama-telemetry/internal/telemetry"
-	"ollama-telemetry/internal/telemetry/system"
+	"dllm-network/internal/telemetry"
+	"dllm-network/internal/telemetry/system"
 )
 
 type State string

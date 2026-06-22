@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // TestWAL_WriterAndReadOnlyReader_NoBusyErrors (task 1.8, design D3 smoke

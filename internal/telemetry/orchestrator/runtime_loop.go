@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"ollama-telemetry/internal/telemetry"
-	"ollama-telemetry/internal/telemetry/ollama"
+	"dllm-network/internal/telemetry"
+	"dllm-network/internal/telemetry/ollama"
 )
 
 type OllamaPoller interface {

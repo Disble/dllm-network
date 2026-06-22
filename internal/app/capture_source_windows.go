@@ -2,7 +2,7 @@
 
 package app
 
-import "ollama-telemetry/internal/capture"
+import "dllm-network/internal/capture"
 
 // newWinDivertCapture returns the real WinDivert capture source on Windows.
 // The source is opened lazily (in inferencePipeline.run) so the constructor

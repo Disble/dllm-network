@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/activity"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/activity"
+	"dllm-network/internal/telemetry/inference"
 )
 
 func TestRecentKeepsBoundedChronologicalHistory(t *testing.T) {

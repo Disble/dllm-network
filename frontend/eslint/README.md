@@ -1,6 +1,6 @@
 # Frontend standards adaptation
 
-These ESLint rules adapt the proven `autoreas-mobile` architecture standards to the Wails React web frontend used by `ollama-telemetry`.
+These ESLint rules adapt the proven `autoreas-mobile` architecture standards to the Wails React web frontend used by `dllm-network`.
 
 ## Quick path
 

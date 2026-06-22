@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/capture"
+	"dllm-network/internal/capture"
 )
 
 // TestFakeSource_ReplaysGoldenSegments asserts that the fake CaptureSource

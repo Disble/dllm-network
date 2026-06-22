@@ -20,7 +20,7 @@ export function TitleBar() {
           <path d="M15 10h.01" />
           <path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z" />
         </svg>
-        <span className="app-titlebar__title">Ollama Telemetry</span>
+        <span className="app-titlebar__title">dllm-network</span>
       </div>
       <div className="app-titlebar__controls">
         <button type="button" className="app-titlebar__control" aria-label="Minimise" onClick={() => runtime?.WindowMinimise?.()}>

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // TestStore_Stats_OverPopulatedDataset (spec: "Stats over a populated

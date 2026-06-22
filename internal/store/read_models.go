@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 var supportedInferenceFilters = []string{"model", "endpoint", "status", "since", "until"}

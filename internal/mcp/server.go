@@ -9,12 +9,12 @@ package mcp
 import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"ollama-telemetry/internal/store"
+	"dllm-network/internal/store"
 )
 
 // serverName/serverVersion identify this MCP server to connecting clients.
 const (
-	serverName    = "ollama-telemetry"
+	serverName    = "dllm-network"
 	serverVersion = "v1.0.0"
 )
 

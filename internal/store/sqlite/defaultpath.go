@@ -8,17 +8,17 @@ import (
 
 // defaultDBFileName is the SQLite database file name under the app's local
 // (non-roaming) data directory (design D3:
-// %LOCALAPPDATA%/ollama-telemetry/telemetry.db on Windows, via
+// %LOCALAPPDATA%/dllm-network/telemetry.db on Windows, via
 // os.UserCacheDir()).
 const defaultDBFileName = "telemetry.db"
 
 // defaultAppDirName is the per-app subdirectory created under the resolved
 // cache directory.
-const defaultAppDirName = "ollama-telemetry"
+const defaultAppDirName = "dllm-network"
 
 // DefaultPath resolves the production SQLite database path under the
 // user's local (non-roaming) data directory, creating the parent
-// "ollama-telemetry" directory if needed.
+// "dllm-network" directory if needed.
 //
 // On Windows os.UserCacheDir() resolves to %LOCALAPPDATA% (design D3); a
 // telemetry DB must NOT roam across machines, so os.UserConfigDir()

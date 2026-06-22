@@ -6,7 +6,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"ollama-telemetry/internal/store"
+	"dllm-network/internal/store"
 )
 
 // TestRunStdio_DelegatesToServerRunWithGivenTransport proves the stdio

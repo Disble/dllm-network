@@ -16,4 +16,4 @@ type TrayManager interface {
 }
 
 // DefaultTooltip is shown when hovering the tray icon.
-const DefaultTooltip = "Ollama Telemetry"
+const DefaultTooltip = "dllm-network"

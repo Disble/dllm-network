@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"ollama-telemetry/internal/capture/httpx"
+	"dllm-network/internal/capture/httpx"
 )
 
 // inferenceEndpoints is the set of Ollama-native endpoints that produce token

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"ollama-telemetry/internal/events"
+	"dllm-network/internal/events"
 )
 
 func TestHostHandlesLifecycleActionsAndPublishesCommands(t *testing.T) {

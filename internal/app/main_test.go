@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"ollama-telemetry/internal/capture"
+	"dllm-network/internal/capture"
 )
 
 // TestMain installs an inert capture source as the package default for the

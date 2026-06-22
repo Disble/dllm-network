@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"ollama-telemetry/internal/activity"
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/activity"
+	"dllm-network/internal/telemetry/inference"
 )
 
 type Snapshot struct {

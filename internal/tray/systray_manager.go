@@ -45,7 +45,7 @@ func (m *SystrayManager) Start(config Config) error {
 		}
 
 		openItem := addMenuItem("Abrir", "Abrir la ventana principal")
-		exitItem := addMenuItem("Salir", "Salir de Ollama Telemetry")
+		exitItem := addMenuItem("Salir", "Salir de dllm-network")
 
 		go listenMenuItem(openItem, config.OnOpen)
 		go listenMenuItem(exitItem, config.OnExit)

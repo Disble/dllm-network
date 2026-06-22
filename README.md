@@ -1,9 +1,9 @@
-# Ollama Telemetry
+# dllm-network
 
 > A Chrome DevTools "Network tab" for your local [Ollama](https://ollama.com) —
 > plus an MCP server that lets LLMs query the traffic it captures.
 
-Ollama Telemetry is a Windows tray app (Wails + React) that **passively
+dllm-network is a Windows tray app (Wails + React) that **passively
 observes** the HTTP traffic between your tools and a local Ollama instance and
 presents it like a request inspector: models, endpoints, status codes,
 tokens/sec, latency, and full request/response bodies. It then exposes that same
@@ -50,7 +50,7 @@ cd frontend && bun install && cd ..
 wails dev
 
 # 3. Build the MCP sidecar binary
-go build -o ollama-telemetry-mcp.exe ./cmd/ollama-telemetry-mcp
+go build -o dllm-network-mcp.exe ./cmd/dllm-network-mcp
 ```
 
 Generate some Ollama traffic, watch it appear in the dashboard, then wire the
@@ -67,8 +67,8 @@ path — for example, Claude Desktop's `claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "ollama-telemetry": {
-      "command": "C:\\absolute\\path\\to\\ollama-telemetry-mcp.exe"
+    "dllm-network": {
+      "command": "C:\\absolute\\path\\to\\dllm-network-mcp.exe"
     }
   }
 }
@@ -112,7 +112,7 @@ internal/store/sqlite  Durable WAL SQLite store (the cross-process seam)
 internal/persistence   Async bus subscriber → batched, bounded writes
 internal/mcp           MCP server core: 3-tool MCP contract (SDK quarantined here)
 internal/app           Wails app lifecycle, dashboard wiring
-cmd/ollama-telemetry-mcp   stdio MCP sidecar binary
+cmd/dllm-network-mcp   stdio MCP sidecar binary
 frontend               React + Vite dashboard
 ```
 

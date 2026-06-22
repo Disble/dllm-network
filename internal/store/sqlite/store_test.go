@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // TestStore_SaveAndGet_RoundTrip is the first vertical tracer bullet for the

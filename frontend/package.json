@@ -1,5 +1,5 @@
 {
-  "name": "ollama-telemetry-frontend",
+  "name": "dllm-network-frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",

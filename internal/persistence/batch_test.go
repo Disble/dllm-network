@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // TestSubscriber_BatchFlush_OnSizeOrInterval asserts the batcher flushes

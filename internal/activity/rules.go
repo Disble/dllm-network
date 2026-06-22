@@ -1,6 +1,6 @@
 package activity
 
-import "ollama-telemetry/internal/telemetry/system"
+import "dllm-network/internal/telemetry/system"
 
 type decision struct {
 	kind       Kind

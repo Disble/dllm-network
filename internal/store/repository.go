@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 // Filter narrows a Query or Stats call by any combination of model,

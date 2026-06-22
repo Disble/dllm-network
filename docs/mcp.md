@@ -1,9 +1,9 @@
 # Using the MCP server
 
-Ollama Telemetry ships an **MCP (Model Context Protocol) server** that exposes
+dllm-network ships an **MCP (Model Context Protocol) server** that exposes
 the inference requests it has captured to any MCP client — Claude Desktop,
 Claude Code, or your own. It runs as a small **stdio sidecar binary**
-(`cmd/ollama-telemetry-mcp`) that opens the same database the GUI app writes,
+(`cmd/dllm-network-mcp`) that opens the same database the GUI app writes,
 **read-only**, and serves it over standard input/output.
 
 > TL;DR — build the sidecar, point your MCP client at the binary, make sure the
@@ -16,7 +16,7 @@ Claude Code, or your own. It runs as a small **stdio sidecar binary**
 GUI app (writer) ──captures Ollama traffic──▶  telemetry.db  (SQLite, WAL)
                                                      ▲
                                                      │ read-only
-                          ollama-telemetry-mcp ──────┘
+                          dllm-network-mcp ──────┘
                             (stdio sidecar)
                                   ▲
                                   │ stdio (MCP)
@@ -32,7 +32,7 @@ agree on the database location through one shared resolver. Full design:
 1. **Go 1.26+** (to build the sidecar).
 2. **The GUI app must have run at least once.** The sidecar only *reads* the
    database — it never creates it. If the GUI has never run, the sidecar exits
-   with: `telemetry database not found — start the ollama-telemetry GUI app at
+   with: `telemetry database not found — start the dllm-network GUI app at
    least once before running the MCP sidecar`.
 3. **Captured data.** For the tools to return anything useful, the GUI must have
    observed real Ollama traffic. Per-request capture uses WinDivert and needs
@@ -44,12 +44,12 @@ agree on the database location through one shared resolver. Full design:
 From the repository root:
 
 ```sh
-go build -o ollama-telemetry-mcp.exe ./cmd/ollama-telemetry-mcp
+go build -o dllm-network-mcp.exe ./cmd/dllm-network-mcp
 ```
 
-This produces `ollama-telemetry-mcp.exe`. Note its **absolute path** — MCP
+This produces `dllm-network-mcp.exe`. Note its **absolute path** — MCP
 clients launch it by full path. The binary takes **no flags**: it resolves the
-database location itself (`%LOCALAPPDATA%\ollama-telemetry\telemetry.db` on
+database location itself (`%LOCALAPPDATA%\dllm-network\telemetry.db` on
 Windows).
 
 ## 2. Register it with an MCP client
@@ -62,19 +62,19 @@ Edit `claude_desktop_config.json`
 ```json
 {
   "mcpServers": {
-    "ollama-telemetry": {
-      "command": "C:\\absolute\\path\\to\\ollama-telemetry-mcp.exe"
+    "dllm-network": {
+      "command": "C:\\absolute\\path\\to\\dllm-network-mcp.exe"
     }
   }
 }
 ```
 
-Restart Claude Desktop. The `ollama-telemetry` tools appear in the tools menu.
+Restart Claude Desktop. The `dllm-network` tools appear in the tools menu.
 
 ### Claude Code
 
 ```sh
-claude mcp add ollama-telemetry -- C:\absolute\path\to\ollama-telemetry-mcp.exe
+claude mcp add dllm-network -- C:\absolute\path\to\dllm-network-mcp.exe
 ```
 
 Or commit a project-scoped `.mcp.json`:
@@ -82,8 +82,8 @@ Or commit a project-scoped `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "ollama-telemetry": {
-      "command": "C:\\absolute\\path\\to\\ollama-telemetry-mcp.exe"
+    "dllm-network": {
+      "command": "C:\\absolute\\path\\to\\dllm-network-mcp.exe"
     }
   }
 }

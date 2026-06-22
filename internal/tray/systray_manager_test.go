@@ -31,7 +31,7 @@ func TestSystrayManagerStartConfiguresMenuAndInvokesCallbacks(t *testing.T) {
 	exited := make(chan struct{}, 1)
 	err := manager.Start(Config{
 		Icon:    []byte{0x01, 0x02, 0x03},
-		Tooltip: "Ollama Telemetry",
+		Tooltip: "dllm-network",
 		OnOpen:  func() { opened <- struct{}{} },
 		OnExit:  func() { exited <- struct{}{} },
 	})
@@ -51,8 +51,8 @@ func TestSystrayManagerStartConfiguresMenuAndInvokesCallbacks(t *testing.T) {
 		t.Fatalf("expected icon bytes to be forwarded, got %v", icon)
 	}
 
-	if tooltip != "Ollama Telemetry" {
-		t.Fatalf("expected tooltip %q, got %q", "Ollama Telemetry", tooltip)
+	if tooltip != "dllm-network" {
+		t.Fatalf("expected tooltip %q, got %q", "dllm-network", tooltip)
 	}
 
 	items["Abrir"].click()

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/inference"
 )
 
 func TestProject_StripsRecentBodiesButKeepsCurrentAndMetadata(t *testing.T) {

@@ -3,8 +3,8 @@ package activity
 import (
 	"time"
 
-	"ollama-telemetry/internal/telemetry/ollama"
-	"ollama-telemetry/internal/telemetry/orchestrator"
+	"dllm-network/internal/telemetry/ollama"
+	"dllm-network/internal/telemetry/orchestrator"
 )
 
 type Kind string

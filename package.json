@@ -1,5 +1,5 @@
 {
-  "name": "ollama-telemetry-workspace",
+  "name": "dllm-network-workspace",
   "private": true,
   "type": "module",
   "scripts": {

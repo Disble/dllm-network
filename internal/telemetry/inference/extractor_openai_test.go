@@ -3,7 +3,7 @@ package inference
 import (
 	"testing"
 
-	"ollama-telemetry/internal/capture/httpx"
+	"dllm-network/internal/capture/httpx"
 )
 
 // Real captured fixtures from Ollama's OpenAI-compatible endpoint

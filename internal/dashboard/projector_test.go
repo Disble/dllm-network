@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"ollama-telemetry/internal/activity"
-	"ollama-telemetry/internal/store"
-	"ollama-telemetry/internal/telemetry/inference"
-	"ollama-telemetry/internal/telemetry/ollama"
-	"ollama-telemetry/internal/telemetry/orchestrator"
-	"ollama-telemetry/internal/telemetry/system"
+	"dllm-network/internal/activity"
+	"dllm-network/internal/store"
+	"dllm-network/internal/telemetry/inference"
+	"dllm-network/internal/telemetry/ollama"
+	"dllm-network/internal/telemetry/orchestrator"
+	"dllm-network/internal/telemetry/system"
 )
 
 func TestProjectorProjectsConfirmedAndInferredSnapshot(t *testing.T) {

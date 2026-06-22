@@ -1,7 +1,7 @@
 {
   "mcpServers": {
-    "ollama-telemetry": {
-      "command": "D:\\dev\\disble\\ollama-telemetry\\ollama-telemetry-mcp.exe"
+    "dllm-network": {
+      "command": "D:\\dev\\disble\\dllm-network\\dllm-network-mcp.exe"
     }
   }
 }

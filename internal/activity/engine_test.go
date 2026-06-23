@@ -93,24 +93,7 @@ func TestEngineInferEmitsExplicitInferredActivity(t *testing.T) {
 			}
 
 			event := engine.Infer(tt.input)
-
-			if event.Kind != tt.wantKind {
-				t.Fatalf("expected kind %q, got %q", tt.wantKind, event.Kind)
-			}
-			if event.Model != tt.wantModel {
-				t.Fatalf("expected model %q, got %q", tt.wantModel, event.Model)
-			}
-			if event.Confidence != tt.wantConfidence {
-				t.Fatalf("expected confidence %q, got %q", tt.wantConfidence, event.Confidence)
-			}
-			if event.Truth != tt.wantTruth {
-				t.Fatalf("expected truth %q, got %q", tt.wantTruth, event.Truth)
-			}
-			if !event.ObservedAt.Equal(tt.wantObservedAt) {
-				t.Fatalf("expected observed_at %s, got %s", tt.wantObservedAt, event.ObservedAt)
-			}
-			assertEvidenceKinds(t, event.Evidence, tt.wantEvidenceKinds)
-			assertNoFalseConfirmedRequestClaims(t, event)
+			assertInferredActivity(t, event, tt.wantKind, tt.wantModel, tt.wantConfidence, tt.wantTruth, tt.wantObservedAt, tt.wantEvidenceKinds)
 		})
 	}
 }
@@ -144,6 +127,30 @@ func assertNoFalseConfirmedRequestClaims(t *testing.T, event Event) {
 			t.Fatalf("expected evidence detail to avoid confirmed request claims, got %q", evidence.Detail)
 		}
 	}
+}
+
+// assertInferredActivity verifies an inferred event matches the expected kind,
+// model, confidence, truth, observed time, evidence kinds, and carries no false
+// confirmed-request claims.
+func assertInferredActivity(t *testing.T, event Event, wantKind Kind, wantModel string, wantConfidence Confidence, wantTruth Truth, wantObservedAt time.Time, wantEvidence []EvidenceKind) {
+	t.Helper()
+	if event.Kind != wantKind {
+		t.Fatalf("expected kind %q, got %q", wantKind, event.Kind)
+	}
+	if event.Model != wantModel {
+		t.Fatalf("expected model %q, got %q", wantModel, event.Model)
+	}
+	if event.Confidence != wantConfidence {
+		t.Fatalf("expected confidence %q, got %q", wantConfidence, event.Confidence)
+	}
+	if event.Truth != wantTruth {
+		t.Fatalf("expected truth %q, got %q", wantTruth, event.Truth)
+	}
+	if !event.ObservedAt.Equal(wantObservedAt) {
+		t.Fatalf("expected observed_at %s, got %s", wantObservedAt, event.ObservedAt)
+	}
+	assertEvidenceKinds(t, event.Evidence, wantEvidence)
+	assertNoFalseConfirmedRequestClaims(t, event)
 }
 
 func activityInput(observedAt time.Time, model string, processFound bool, pid int32, connectionCount int, processStatus system.SnapshotStatus) Input {

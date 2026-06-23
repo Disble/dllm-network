@@ -48,28 +48,36 @@ func TestConnectionCollectorCollectShapesOwnedLoopbackConnections(t *testing.T) 
 
 			snapshot := collector.Collect(context.Background(), tt.ownerPID)
 
-			if snapshot.Meta.Source != SourceConnections {
-				t.Fatalf("expected connection source %q, got %q", SourceConnections, snapshot.Meta.Source)
-			}
-			if snapshot.Meta.Provider != DefaultConnectionProvider {
-				t.Fatalf("expected provider %q, got %q", DefaultConnectionProvider, snapshot.Meta.Provider)
-			}
-			if snapshot.Meta.Status != StatusConfirmed || !snapshot.Meta.Healthy || !snapshot.Meta.Reachable || !snapshot.Meta.Supported {
-				t.Fatalf("expected confirmed healthy metadata, got %+v", snapshot.Meta)
-			}
-			if !snapshot.Meta.ObservedAt.Equal(observedAt) {
-				t.Fatalf("expected observed_at %s, got %s", observedAt, snapshot.Meta.ObservedAt)
-			}
-			if snapshot.PID != tt.ownerPID {
-				t.Fatalf("expected owner pid %d, got %d", tt.ownerPID, snapshot.PID)
-			}
-			if len(snapshot.Connections) != tt.wantCount {
-				t.Fatalf("expected %d owned loopback connections, got %d", tt.wantCount, len(snapshot.Connections))
-			}
-			if tt.wantCount > 0 && snapshot.Connections[0].RemoteAddress != tt.wantRemote {
-				t.Fatalf("expected remote address %q, got %q", tt.wantRemote, snapshot.Connections[0].RemoteAddress)
-			}
+			assertConfirmedConnectionSnapshot(t, snapshot, observedAt, tt.ownerPID, tt.wantCount, tt.wantRemote)
 		})
+	}
+}
+
+// assertConfirmedConnectionSnapshot verifies a successful connection collection
+// exposes the expected source, provider, metadata flags, owner pid, and filtered
+// connection count.
+func assertConfirmedConnectionSnapshot(t *testing.T, snapshot ConnectionsSnapshot, observedAt time.Time, ownerPID int32, wantCount int, wantRemote string) {
+	t.Helper()
+	if snapshot.Meta.Source != SourceConnections {
+		t.Fatalf("expected connection source %q, got %q", SourceConnections, snapshot.Meta.Source)
+	}
+	if snapshot.Meta.Provider != DefaultConnectionProvider {
+		t.Fatalf("expected provider %q, got %q", DefaultConnectionProvider, snapshot.Meta.Provider)
+	}
+	if snapshot.Meta.Status != StatusConfirmed || !snapshot.Meta.Healthy || !snapshot.Meta.Reachable || !snapshot.Meta.Supported {
+		t.Fatalf("expected confirmed healthy metadata, got %+v", snapshot.Meta)
+	}
+	if !snapshot.Meta.ObservedAt.Equal(observedAt) {
+		t.Fatalf("expected observed_at %s, got %s", observedAt, snapshot.Meta.ObservedAt)
+	}
+	if snapshot.PID != ownerPID {
+		t.Fatalf("expected owner pid %d, got %d", ownerPID, snapshot.PID)
+	}
+	if len(snapshot.Connections) != wantCount {
+		t.Fatalf("expected %d owned loopback connections, got %d", wantCount, len(snapshot.Connections))
+	}
+	if wantCount > 0 && snapshot.Connections[0].RemoteAddress != wantRemote {
+		t.Fatalf("expected remote address %q, got %q", wantRemote, snapshot.Connections[0].RemoteAddress)
 	}
 }
 
@@ -113,19 +121,27 @@ func TestConnectionCollectorCollectReturnsUnavailableOrUnsupportedMetadata(t *te
 
 			snapshot := collector.Collect(context.Background(), 4242)
 
-			if snapshot.Meta.Status != tt.wantStatus {
-				t.Fatalf("expected status %q, got %q", tt.wantStatus, snapshot.Meta.Status)
-			}
-			if snapshot.Meta.Healthy != tt.wantHealthy || snapshot.Meta.Reachable != tt.wantReachable || snapshot.Meta.Supported != tt.wantSupported {
-				t.Fatalf("unexpected metadata flags: %+v", snapshot.Meta)
-			}
-			if snapshot.Meta.Error == "" {
-				t.Fatal("expected failing provider to surface an error")
-			}
-			if len(snapshot.Connections) != 0 {
-				t.Fatalf("expected no connections on provider failure, got %+v", snapshot.Connections)
-			}
+			assertFailingConnectionSnapshot(t, snapshot, tt.wantStatus, tt.wantHealthy, tt.wantReachable, tt.wantSupported)
 		})
+	}
+}
+
+// assertFailingConnectionSnapshot verifies an unavailable/unsupported provider
+// does not claim ownership and reports the expected metadata flags plus a
+// non-empty error.
+func assertFailingConnectionSnapshot(t *testing.T, snapshot ConnectionsSnapshot, wantStatus SnapshotStatus, wantHealthy, wantReachable, wantSupported bool) {
+	t.Helper()
+	if snapshot.Meta.Status != wantStatus {
+		t.Fatalf("expected status %q, got %q", wantStatus, snapshot.Meta.Status)
+	}
+	if snapshot.Meta.Healthy != wantHealthy || snapshot.Meta.Reachable != wantReachable || snapshot.Meta.Supported != wantSupported {
+		t.Fatalf("unexpected metadata flags: %+v", snapshot.Meta)
+	}
+	if snapshot.Meta.Error == "" {
+		t.Fatal("expected failing provider to surface an error")
+	}
+	if len(snapshot.Connections) != 0 {
+		t.Fatalf("expected no connections on provider failure, got %+v", snapshot.Connections)
 	}
 }
 

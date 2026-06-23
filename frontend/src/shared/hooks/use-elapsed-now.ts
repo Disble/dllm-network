@@ -15,8 +15,8 @@ export function useElapsedNow(active: boolean, intervalMS = 500): number {
     }
     // Tick on the interval until inactive/unmounted. The lazy initial state is
     // already current at mount, so no synchronous catch-up is needed here.
-    const id = window.setInterval(() => setNow(Date.now()), intervalMS);
-    return () => window.clearInterval(id);
+    const id = globalThis.setInterval(() => setNow(Date.now()), intervalMS);
+    return () => globalThis.clearInterval(id);
   }, [active, intervalMS]);
 
   return now;

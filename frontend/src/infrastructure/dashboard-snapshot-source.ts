@@ -59,7 +59,10 @@ export function createDashboardSnapshotSource(): DashboardSnapshotSource {
       return;
     }
 
-    const runtimeBridge = (window as typeof window & { runtime?: { EventsOn?: RuntimeEventsOn } }).runtime;
+    const runtimeBridge = (
+      // NOSONAR(S7764) — Wails injects runtime.EventsOn on window, not globalThis.
+      window as typeof window & { runtime?: { EventsOn?: RuntimeEventsOn } }
+    ).runtime;
     const runtimeEventsOn = runtimeBridge?.EventsOn;
 
     if (runtimeEventsOn === undefined) {

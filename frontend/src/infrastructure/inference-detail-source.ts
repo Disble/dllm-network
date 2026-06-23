@@ -34,6 +34,7 @@ export function createInferenceDetailSource(): InferenceDetailSource {
       }
 
       const binding = (
+        // NOSONAR(S7764) — Wails injects go.app.App.InferenceDetail on window, not globalThis.
         window as typeof window & {
           go?: { app?: { App?: { InferenceDetail?: InferenceDetailBinding } } };
         }

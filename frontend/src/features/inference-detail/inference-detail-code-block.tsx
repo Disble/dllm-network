@@ -18,9 +18,9 @@ export function InferenceDetailCodeBlock({ raw, pretty, streamCount, truncated }
   const isStream = streamCount !== undefined && streamCount > 1;
 
   const handleCopy = () => {
-    void window.navigator.clipboard?.writeText(raw);
+    void globalThis.navigator.clipboard?.writeText(raw);
     setCopied(true);
-    window.setTimeout(() => setCopied(false), COPIED_RESET_MS);
+    globalThis.setTimeout(() => setCopied(false), COPIED_RESET_MS);
   };
 
   return (

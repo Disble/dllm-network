@@ -4,13 +4,16 @@
  * the Wails window runtime when present and no-op in a plain browser / tests.
  */
 export function TitleBar() {
-  const runtime = (window as unknown as {
-    runtime?: {
-      WindowMinimise?: () => void;
-      WindowToggleMaximise?: () => void;
-      WindowHide?: () => void;
-    };
-  }).runtime;
+  const runtime = (
+    // NOSONAR(S7764) — Wails window controls are injected on window.runtime, not globalThis.
+    window as unknown as {
+      runtime?: {
+        WindowMinimise?: () => void;
+        WindowToggleMaximise?: () => void;
+        WindowHide?: () => void;
+      };
+    }
+  ).runtime;
 
   return (
     <header className="app-titlebar">

@@ -232,60 +232,74 @@ func TestExtractor_TableDriven(t *testing.T) {
 		endpoint := endpoint
 		t.Run("inference_endpoint_"+endpoint, func(t *testing.T) {
 			t.Parallel()
-
-			body := marshalJSON(map[string]interface{}{
-				"model":  "mistral",
-				"prompt": "Hi",
-			})
-			doneBody := marshalJSON(map[string]interface{}{
-				"done":           true,
-				"eval_count":     10,
-				"eval_duration":  1000000000, // 1 second → 10 tok/s
-				"total_duration": 1200000000,
-			})
-			req := makeRequest("POST", endpoint, body)
-			resp := makeResponseLine(doneBody, true)
-
-			e := NewExtractor()
-			inf, ok := e.FromExchange(req, resp)
-
-			if !ok {
-				t.Fatalf("expected ok=true for %s", endpoint)
-			}
-			if inf.Status != PhaseCompleted {
-				t.Errorf("expected PhaseCompleted, got %v", inf.Status)
-			}
-			if inf.Tokens == nil {
-				t.Fatal("Tokens must not be nil for completed inference")
-			}
-			if inf.Tokens.PerSec != 10.0 {
-				t.Errorf("PerSec: got %v, want 10.0", inf.Tokens.PerSec)
-			}
-			if inf.Model != "mistral" {
-				t.Errorf("model: got %q, want %q", inf.Model, "mistral")
-			}
+			assertCompletedInferenceEndpoint(t, endpoint, "mistral", 10.0)
 		})
 	}
 
 	t.Run("non_inference_version_endpoint", func(t *testing.T) {
 		t.Parallel()
-		req := makeRequest("GET", "/api/version", nil)
-		resp := httpx.Message{Kind: httpx.KindResponse, StatusCode: 200,
-			Body: marshalJSON(map[string]string{"version": "0.1.0"})}
-
-		e := NewExtractor()
-		inf, ok := e.FromExchange(req, resp)
-
-		if !ok {
-			t.Fatal("expected ok=true for metadata-only endpoint")
-		}
-		if inf.Status != PhaseMetadataOnly {
-			t.Errorf("expected PhaseMetadataOnly, got %v", inf.Status)
-		}
-		if inf.Tokens != nil {
-			t.Errorf("Tokens must be nil for /api/version, got %+v", inf.Tokens)
-		}
+		assertMetadataOnlyEndpoint(t, "/api/version")
 	})
+}
+
+// assertCompletedInferenceEndpoint verifies a POST to an inference endpoint
+// with a terminal response line produces a completed inference with the
+// expected model and token rate.
+func assertCompletedInferenceEndpoint(t *testing.T, endpoint, wantModel string, wantPerSec float64) {
+	t.Helper()
+	body := marshalJSON(map[string]interface{}{
+		"model":  wantModel,
+		"prompt": "Hi",
+	})
+	doneBody := marshalJSON(map[string]interface{}{
+		"done":           true,
+		"eval_count":     10,
+		"eval_duration":  1000000000, // 1 second → 10 tok/s
+		"total_duration": 1200000000,
+	})
+	req := makeRequest("POST", endpoint, body)
+	resp := makeResponseLine(doneBody, true)
+
+	e := NewExtractor()
+	inf, ok := e.FromExchange(req, resp)
+
+	if !ok {
+		t.Fatalf("expected ok=true for %s", endpoint)
+	}
+	if inf.Status != PhaseCompleted {
+		t.Errorf("expected PhaseCompleted, got %v", inf.Status)
+	}
+	if inf.Tokens == nil {
+		t.Fatal("Tokens must not be nil for completed inference")
+	}
+	if inf.Tokens.PerSec != wantPerSec {
+		t.Errorf("PerSec: got %v, want %v", inf.Tokens.PerSec, wantPerSec)
+	}
+	if inf.Model != wantModel {
+		t.Errorf("model: got %q, want %q", inf.Model, wantModel)
+	}
+}
+
+// assertMetadataOnlyEndpoint verifies a non-inference endpoint returns
+// metadata-only status with nil tokens.
+func assertMetadataOnlyEndpoint(t *testing.T, endpoint string) {
+	t.Helper()
+	req := makeRequest("GET", endpoint, nil)
+	resp := httpx.Message{Kind: httpx.KindResponse, StatusCode: 200,
+		Body: marshalJSON(map[string]string{"version": "0.1.0"})}
+
+	e := NewExtractor()
+	inf, ok := e.FromExchange(req, resp)
+
+	if !ok {
+		t.Fatalf("expected ok=true for metadata-only endpoint")
+	}
+	if inf.Status != PhaseMetadataOnly {
+		t.Errorf("expected PhaseMetadataOnly, got %v", inf.Status)
+	}
+	if inf.Tokens != nil {
+		t.Errorf("Tokens must be nil for %s, got %+v", endpoint, inf.Tokens)
+	}
 }
 
 // ---- Slice A: DevTools-Network detail fields --------------------------------

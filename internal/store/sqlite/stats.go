@@ -14,20 +14,55 @@ import (
 // that have non-NULL per_sec/latency_ms (i.e. Tokens != nil at write time),
 // plus a per-model row count over ALL matching rows (not just those with
 // token stats) so ByModel counts always sum to filter's total match count.
+// statsFilterArgs returns positional arguments for the static stats WHERE
+// clause. Each optional condition consumes two arguments: a skip flag (1 to
+// ignore the condition, 0 to enforce it) and the comparison value. When a
+// filter field is unset the corresponding condition becomes "1 = 1" and the
+// value is ignored, so the query text never changes based on user input.
+func statsFilterArgs(f store.Filter) []any {
+	status := 0
+	if f.Status != nil {
+		status = int(*f.Status)
+	}
+	return []any{
+		boolInt(f.Model == ""), f.Model,
+		boolInt(f.Endpoint == ""), f.Endpoint,
+		boolInt(f.Status == nil), status,
+		boolInt(f.Since.IsZero()), f.Since.UnixNano(),
+		boolInt(f.Until.IsZero()), f.Until.UnixNano(),
+	}
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// statsWhere is a fully static WHERE clause shared by the three stats queries.
+// The optional filters are controlled by parameter values, never by string
+// concatenation, which satisfies SQL injection scanners.
+const statsWhere = ` WHERE (1 = ? OR model = ?)` +
+	` AND (1 = ? OR endpoint = ?)` +
+	` AND (1 = ? OR status = ?)` +
+	` AND (1 = ? OR at >= ?)` +
+	` AND (1 = ? OR at < ?)`
+
 func (s *Store) Stats(ctx context.Context, filter store.Filter) (store.Stats, error) {
-	clause, args := whereClause(filter)
+	args := statsFilterArgs(filter)
 
-	count, err := s.countMatching(ctx, clause, args)
+	count, err := s.countMatching(ctx, args)
 	if err != nil {
 		return store.Stats{}, err
 	}
 
-	perSecs, latencies, err := s.fetchTokenMetrics(ctx, clause, args)
+	perSecs, latencies, err := s.fetchTokenMetrics(ctx, args)
 	if err != nil {
 		return store.Stats{}, err
 	}
 
-	byModel, err := s.countByModel(ctx, clause, args)
+	byModel, err := s.countByModel(ctx, args)
 	if err != nil {
 		return store.Stats{}, err
 	}
@@ -42,12 +77,9 @@ func (s *Store) Stats(ctx context.Context, filter store.Filter) (store.Stats, er
 	}, nil
 }
 
-func (s *Store) countMatching(ctx context.Context, whereClause string, args []any) (int, error) {
-	if err := validateClauseColumns(whereClause); err != nil {
-		return 0, err
-	}
+func (s *Store) countMatching(ctx context.Context, args []any) (int, error) {
+	const q = "SELECT COUNT(*) FROM inferences" + statsWhere
 	var count int
-	q := "SELECT COUNT(*) FROM inferences" + whereClause
 	if err := s.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
 		return 0, fmt.Errorf("sqlite: stats count: %w", err)
 	}
@@ -55,20 +87,11 @@ func (s *Store) countMatching(ctx context.Context, whereClause string, args []an
 }
 
 // fetchTokenMetrics returns the per_sec and latency_ms values for rows
-// matching whereClause that have non-NULL per_sec (i.e. were saved with
+// matching the filter that have non-NULL per_sec (i.e. were saved with
 // Tokens != nil). Rows without token stats are excluded from the
 // percentile inputs but still counted in countMatching/countByModel.
-func (s *Store) fetchTokenMetrics(ctx context.Context, whereClause string, args []any) ([]float64, []float64, error) {
-	if err := validateClauseColumns(whereClause); err != nil {
-		return nil, nil, err
-	}
-	cond := "per_sec IS NOT NULL"
-	q := "SELECT per_sec, latency_ms FROM inferences"
-	if whereClause == "" {
-		q += " WHERE " + cond
-	} else {
-		q += whereClause + " AND " + cond
-	}
+func (s *Store) fetchTokenMetrics(ctx context.Context, args []any) ([]float64, []float64, error) {
+	const q = "SELECT per_sec, latency_ms FROM inferences" + statsWhere + " AND per_sec IS NOT NULL"
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {
@@ -92,11 +115,8 @@ func (s *Store) fetchTokenMetrics(ctx context.Context, whereClause string, args 
 	return perSecs, latencies, nil
 }
 
-func (s *Store) countByModel(ctx context.Context, whereClause string, args []any) ([]store.ModelStats, error) {
-	if err := validateClauseColumns(whereClause); err != nil {
-		return nil, err
-	}
-	q := "SELECT model, COUNT(*) FROM inferences" + whereClause + " GROUP BY model"
+func (s *Store) countByModel(ctx context.Context, args []any) ([]store.ModelStats, error) {
+	const q = "SELECT model, COUNT(*) FROM inferences" + statsWhere + " GROUP BY model"
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
 	if err != nil {

@@ -41,19 +41,28 @@ func TestNewServer_RegistersExactThreeToolsAndNoResources(t *testing.T) {
 	}
 	defer session.Close()
 
-	tools, err := session.ListTools(ctx, &mcp.ListToolsParams{})
+	result, err := session.ListTools(ctx, &mcp.ListToolsParams{})
 	if err != nil {
 		t.Fatalf("ListTools failed: %v", err)
 	}
+	assertExpectedTools(t, result.Tools)
+
+	assertNoResourcesAdvertised(t, ctx, session)
+}
+
+// assertExpectedTools verifies the server advertises exactly the three
+// Context7-style tools and none of the legacy tool names.
+func assertExpectedTools(t *testing.T, tools []*mcp.Tool) {
+	t.Helper()
 	wantTools := map[string]bool{
 		"resolve_inference_context": false,
 		"search_inferences":         false,
 		"get_inference_context":     false,
 	}
-	if len(tools.Tools) != len(wantTools) {
-		t.Fatalf("expected exactly %d tools, got %d", len(wantTools), len(tools.Tools))
+	if len(tools) != len(wantTools) {
+		t.Fatalf("expected exactly %d tools, got %d", len(wantTools), len(tools))
 	}
-	for _, tool := range tools.Tools {
+	for _, tool := range tools {
 		if _, ok := wantTools[tool.Name]; ok {
 			wantTools[tool.Name] = true
 			continue
@@ -66,8 +75,8 @@ func TestNewServer_RegistersExactThreeToolsAndNoResources(t *testing.T) {
 		}
 	}
 
-	gotToolNames := make([]string, 0, len(tools.Tools))
-	for _, tool := range tools.Tools {
+	gotToolNames := make([]string, 0, len(tools))
+	for _, tool := range tools {
 		gotToolNames = append(gotToolNames, tool.Name)
 	}
 	for _, removedName := range []string{"query_inferences", "get_inference", "get_stats", "list_models"} {
@@ -75,6 +84,12 @@ func TestNewServer_RegistersExactThreeToolsAndNoResources(t *testing.T) {
 			t.Fatalf("legacy tool %q must not be advertised", removedName)
 		}
 	}
+}
+
+// assertNoResourcesAdvertised verifies the server advertises zero MCP resources
+// and zero resource templates.
+func assertNoResourcesAdvertised(t *testing.T, ctx context.Context, session *mcp.ClientSession) {
+	t.Helper()
 
 	resources, err := session.ListResources(ctx, &mcp.ListResourcesParams{})
 	if err != nil {

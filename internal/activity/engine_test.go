@@ -93,7 +93,14 @@ func TestEngineInferEmitsExplicitInferredActivity(t *testing.T) {
 			}
 
 			event := engine.Infer(tt.input)
-			assertInferredActivity(t, event, tt.wantKind, tt.wantModel, tt.wantConfidence, tt.wantTruth, tt.wantObservedAt, tt.wantEvidenceKinds)
+			assertInferredActivity(t, event, expectedInferredActivity{
+				Kind:       tt.wantKind,
+				Model:      tt.wantModel,
+				Confidence: tt.wantConfidence,
+				Truth:      tt.wantTruth,
+				ObservedAt: tt.wantObservedAt,
+				Evidence:   tt.wantEvidenceKinds,
+			})
 		})
 	}
 }
@@ -129,27 +136,37 @@ func assertNoFalseConfirmedRequestClaims(t *testing.T, event Event) {
 	}
 }
 
-// assertInferredActivity verifies an inferred event matches the expected kind,
-// model, confidence, truth, observed time, evidence kinds, and carries no false
-// confirmed-request claims.
-func assertInferredActivity(t *testing.T, event Event, wantKind Kind, wantModel string, wantConfidence Confidence, wantTruth Truth, wantObservedAt time.Time, wantEvidence []EvidenceKind) {
+// expectedInferredActivity holds the expected fields for assertInferredActivity,
+// keeping the parameter count within SonarQube's S107 limit (≤7).
+type expectedInferredActivity struct {
+	Kind       Kind
+	Model      string
+	Confidence Confidence
+	Truth      Truth
+	ObservedAt time.Time
+	Evidence   []EvidenceKind
+}
+
+// assertInferredActivity verifies an inferred event matches the expected
+// expectedInferredActivity, and carries no false confirmed-request claims.
+func assertInferredActivity(t *testing.T, event Event, want expectedInferredActivity) {
 	t.Helper()
-	if event.Kind != wantKind {
-		t.Fatalf("expected kind %q, got %q", wantKind, event.Kind)
+	if event.Kind != want.Kind {
+		t.Fatalf("expected kind %q, got %q", want.Kind, event.Kind)
 	}
-	if event.Model != wantModel {
-		t.Fatalf("expected model %q, got %q", wantModel, event.Model)
+	if event.Model != want.Model {
+		t.Fatalf("expected model %q, got %q", want.Model, event.Model)
 	}
-	if event.Confidence != wantConfidence {
-		t.Fatalf("expected confidence %q, got %q", wantConfidence, event.Confidence)
+	if event.Confidence != want.Confidence {
+		t.Fatalf("expected confidence %q, got %q", want.Confidence, event.Confidence)
 	}
-	if event.Truth != wantTruth {
-		t.Fatalf("expected truth %q, got %q", wantTruth, event.Truth)
+	if event.Truth != want.Truth {
+		t.Fatalf("expected truth %q, got %q", want.Truth, event.Truth)
 	}
-	if !event.ObservedAt.Equal(wantObservedAt) {
-		t.Fatalf("expected observed_at %s, got %s", wantObservedAt, event.ObservedAt)
+	if !event.ObservedAt.Equal(want.ObservedAt) {
+		t.Fatalf("expected observed_at %s, got %s", want.ObservedAt, event.ObservedAt)
 	}
-	assertEvidenceKinds(t, event.Evidence, wantEvidence)
+	assertEvidenceKinds(t, event.Evidence, want.Evidence)
 	assertNoFalseConfirmedRequestClaims(t, event)
 }
 

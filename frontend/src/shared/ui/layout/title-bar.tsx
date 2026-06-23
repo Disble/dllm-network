@@ -5,7 +5,7 @@
  */
 export function TitleBar() {
   const runtime = (
-    // NOSONAR(S7764) — Wails window controls are injected on window.runtime, not globalThis.
+    // NOSONAR — Wails window controls are injected on window.runtime, not globalThis.
     window as unknown as {
       runtime?: {
         WindowMinimise?: () => void;

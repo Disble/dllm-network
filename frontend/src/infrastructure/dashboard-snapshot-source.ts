@@ -60,7 +60,7 @@ export function createDashboardSnapshotSource(): DashboardSnapshotSource {
     }
 
     const runtimeBridge = (
-      // NOSONAR(S7764) — Wails injects runtime.EventsOn on window, not globalThis.
+      // NOSONAR — Wails injects runtime.EventsOn on window, not globalThis.
       window as typeof window & { runtime?: { EventsOn?: RuntimeEventsOn } }
     ).runtime;
     const runtimeEventsOn = runtimeBridge?.EventsOn;

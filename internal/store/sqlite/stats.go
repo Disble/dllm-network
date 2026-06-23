@@ -40,14 +40,13 @@ func boolInt(b bool) int {
 	return 0
 }
 
-// statsWhere is a fully static WHERE clause shared by the three stats queries.
-// The optional filters are controlled by parameter values, never by string
-// concatenation, which satisfies SQL injection scanners.
-const statsWhere = ` WHERE (1 = ? OR model = ?)` +
-	` AND (1 = ? OR endpoint = ?)` +
-	` AND (1 = ? OR status = ?)` +
-	` AND (1 = ? OR at >= ?)` +
-	` AND (1 = ? OR at < ?)`
+// stats query constants use fully static SQL with parameter-driven skip flags so
+// the query text never changes based on user input.
+const (
+	statsCountSQL = `SELECT COUNT(*) FROM inferences WHERE (1 = ? OR model = ?) AND (1 = ? OR endpoint = ?) AND (1 = ? OR status = ?) AND (1 = ? OR at >= ?) AND (1 = ? OR at < ?)`
+	statsTokenSQL = `SELECT per_sec, latency_ms FROM inferences WHERE (1 = ? OR model = ?) AND (1 = ? OR endpoint = ?) AND (1 = ? OR status = ?) AND (1 = ? OR at >= ?) AND (1 = ? OR at < ?) AND per_sec IS NOT NULL`
+	statsModelSQL = `SELECT model, COUNT(*) FROM inferences WHERE (1 = ? OR model = ?) AND (1 = ? OR endpoint = ?) AND (1 = ? OR status = ?) AND (1 = ? OR at >= ?) AND (1 = ? OR at < ?) GROUP BY model`
+)
 
 func (s *Store) Stats(ctx context.Context, filter store.Filter) (store.Stats, error) {
 	args := statsFilterArgs(filter)
@@ -78,9 +77,8 @@ func (s *Store) Stats(ctx context.Context, filter store.Filter) (store.Stats, er
 }
 
 func (s *Store) countMatching(ctx context.Context, args []any) (int, error) {
-	const q = "SELECT COUNT(*) FROM inferences" + statsWhere
 	var count int
-	if err := s.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
+	if err := s.db.QueryRowContext(ctx, statsCountSQL, args...).Scan(&count); err != nil {
 		return 0, fmt.Errorf("sqlite: stats count: %w", err)
 	}
 	return count, nil
@@ -91,9 +89,7 @@ func (s *Store) countMatching(ctx context.Context, args []any) (int, error) {
 // Tokens != nil). Rows without token stats are excluded from the
 // percentile inputs but still counted in countMatching/countByModel.
 func (s *Store) fetchTokenMetrics(ctx context.Context, args []any) ([]float64, []float64, error) {
-	const q = "SELECT per_sec, latency_ms FROM inferences" + statsWhere + " AND per_sec IS NOT NULL"
-
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.db.QueryContext(ctx, statsTokenSQL, args...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("sqlite: stats token metrics: %w", err)
 	}
@@ -116,9 +112,7 @@ func (s *Store) fetchTokenMetrics(ctx context.Context, args []any) ([]float64, [
 }
 
 func (s *Store) countByModel(ctx context.Context, args []any) ([]store.ModelStats, error) {
-	const q = "SELECT model, COUNT(*) FROM inferences" + statsWhere + " GROUP BY model"
-
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.db.QueryContext(ctx, statsModelSQL, args...)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: stats by model: %w", err)
 	}

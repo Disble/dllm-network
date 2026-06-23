@@ -9,6 +9,9 @@ import { WaterfallBar } from '../../shared/ui/atoms/waterfall-bar';
 import { INFERENCE_STATUS_LABELS } from './inference-explorer.constants';
 import type { InferenceTableRowProps } from './inference-explorer.types';
 
+// All row/cell elements use ARIA roles instead of native <tr>/<td> because the
+// virtualizer requires position:absolute on rows, which <tr> does not support.
+
 /**
  * InferenceTableRow renders a single request as a dense, selectable table row.
  * Pure presentational: derives display values from the event and atoms; the
@@ -30,8 +33,11 @@ export function InferenceTableRow({ event, rowId, isSelected, maxLatencyMS, nowM
 
   const rowClass = `inference-table__row${isSelected ? ' inference-table__row--selected' : ''}`;
 
+  /* eslint-disable react-doctor/prefer-tag-over-role -- virtualizer requires
+     position:absolute on rows, which <tr>/<td> does not support. */
   return (
-    <tr
+    <div
+      role="row"
       aria-selected={isSelected}
       className={rowClass}
       style={style}
@@ -39,17 +45,18 @@ export function InferenceTableRow({ event, rowId, isSelected, maxLatencyMS, nowM
       onClick={() => onSelect(rowId)}
       onKeyDown={handleKeyDown}
     >
-      <td className="inference-table__cell inference-table__cell--model" title={event.model}>{event.model}</td>
-      <td className="inference-table__cell inference-table__cell--endpoint" title={event.endpoint}>{event.endpoint}</td>
-      <td className="inference-table__cell inference-table__cell--method">{event.method}</td>
-      <td className="inference-table__cell inference-table__cell--status">{statusLabel}</td>
-      <td className="inference-table__cell inference-table__cell--code"><StatusCodePill statusCode={event.statusCode ?? null} /></td>
-      <td className="inference-table__cell inference-table__cell--rate"><TokenRateBadge perSec={perSec} /></td>
-      <td className="inference-table__cell inference-table__cell--latency"><LatencyPill latencyMS={latencyMS} /></td>
-      <td className="inference-table__cell inference-table__cell--time">{formatClockTime(event.at)}</td>
-      <td className="inference-table__cell inference-table__cell--waterfall">
+      <div className="inference-table__cell inference-table__cell--model" title={event.model} role="cell">{event.model}</div>
+      <div className="inference-table__cell inference-table__cell--endpoint" title={event.endpoint} role="cell">{event.endpoint}</div>
+      <div className="inference-table__cell inference-table__cell--method" role="cell">{event.method}</div>
+      <div className="inference-table__cell inference-table__cell--status" role="cell">{statusLabel}</div>
+      <div className="inference-table__cell inference-table__cell--code" role="cell"><StatusCodePill statusCode={event.statusCode ?? null} /></div>
+      <div className="inference-table__cell inference-table__cell--rate" role="cell"><TokenRateBadge perSec={perSec} /></div>
+      <div className="inference-table__cell inference-table__cell--latency" role="cell"><LatencyPill latencyMS={latencyMS} /></div>
+      <div className="inference-table__cell inference-table__cell--time" role="cell">{formatClockTime(event.at)}</div>
+      <div className="inference-table__cell inference-table__cell--waterfall" role="cell">
         <WaterfallBar loadMS={loadMS} evalMS={evalMS} totalMS={latencyMS} maxMS={maxLatencyMS} />
-      </td>
-    </tr>
+      </div>
+    </div>
   );
+  /* eslint-enable react-doctor/prefer-tag-over-role */
 }

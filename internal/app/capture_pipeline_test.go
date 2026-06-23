@@ -234,6 +234,115 @@ func findSnapshot(emitted []dashboard.Snapshot, match func(dashboard.Snapshot) b
 	return dashboard.Snapshot{}, false
 }
 
+// runGenerationPipelineTest wires a fake source with the request/response pair,
+// runs the pipeline, and returns the first completed snapshot for the endpoint.
+func runGenerationPipelineTest(t *testing.T, endpoint string, request, response []byte) dashboard.Snapshot {
+	t.Helper()
+
+	baseTime := time.Now()
+	tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+	segments := []capture.Segment{
+		{Tuple: tuple, Dir: capture.DirToServer, Payload: request, SeqNo: 0, At: baseTime},
+		{Tuple: tuple, Dir: capture.DirFromServer, Payload: response, SeqNo: 0, At: baseTime.Add(time.Millisecond)},
+	}
+
+	collector := newPipelineSnapshotCollector()
+	app := newTestAppWithEmitter(capture.NewFakeSource(segments), collector.emit)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	done, found := waitForSnapshot(&collector.snapshots, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+		cur := snap.Inference.Current
+		return cur.Endpoint == endpoint && cur.Status == inference.PhaseCompleted
+	})
+	if !found {
+		t.Fatalf("no completed %s inference; got %d snapshots", endpoint, len(collector.snapshots))
+	}
+	return done
+}
+
+// assertPopulatedGeneration verifies the completed inference has a Generation
+// whose Output is "hi".
+func assertPopulatedGeneration(t *testing.T, done dashboard.Snapshot) {
+	t.Helper()
+	gen := done.Inference.Current.Generation
+	if gen == nil {
+		t.Fatal("expected Generation to be populated on completion")
+	}
+	if gen.Output != "hi" {
+		t.Errorf("Generation.Output: got %q, want %q", gen.Output, "hi")
+	}
+}
+
+// runStreamingGenerationPipelineTest wires a fake source with the request and
+// each response part, runs the pipeline, and returns the completed snapshot and
+// every emitted snapshot.
+func runStreamingGenerationPipelineTest(t *testing.T, endpoint string, request []byte, responseParts [][]byte) (dashboard.Snapshot, []dashboard.Snapshot) {
+	t.Helper()
+
+	baseTime := time.Now()
+	tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
+	segments := buildStreamingSegments(tuple, baseTime, request, responseParts)
+
+	collector := newPipelineSnapshotCollector()
+	app := newTestAppWithEmitter(capture.NewFakeSource(segments), collector.emit)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	app.Startup(ctx)
+
+	done, found := waitForSnapshot(&collector.snapshots, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
+		cur := snap.Inference.Current
+		return cur.Endpoint == endpoint && cur.Status == inference.PhaseCompleted
+	})
+	if !found {
+		t.Fatalf("no completed %s inference; got %d snapshots", endpoint, len(collector.snapshots))
+	}
+	return done, collector.snapshots
+}
+
+// buildStreamingSegments constructs capture segments from a single request and
+// an ordered list of server response parts, advancing SeqNo and At per part.
+func buildStreamingSegments(tuple capture.FourTuple, baseTime time.Time, request []byte, responseParts [][]byte) []capture.Segment {
+	segments := []capture.Segment{{Tuple: tuple, Dir: capture.DirToServer, Payload: request, SeqNo: 0, At: baseTime}}
+
+	seqNo := uint32(0)
+	for i, part := range responseParts {
+		segments = append(segments, capture.Segment{
+			Tuple:   tuple,
+			Dir:     capture.DirFromServer,
+			Payload: part,
+			SeqNo:   seqNo,
+			At:      baseTime.Add(time.Duration(i+1) * 10 * time.Millisecond),
+		})
+		seqNo += uint32(len(part))
+	}
+	return segments
+}
+
+// assertStreamingGenerationGrowth verifies the in-progress generation outputs
+// contain the expected ordered growth subsequence and that the final in-progress
+// output matches the completed output.
+func assertStreamingGenerationGrowth(t *testing.T, emitted []dashboard.Snapshot, endpoint string, done dashboard.Snapshot, wantGrowth []string) {
+	t.Helper()
+	growth := streamedGenerationOutputs(emitted, endpoint)
+	if !containsOrderedOutputs(growth, wantGrowth) {
+		t.Fatalf("in-progress generation growth = %v, want ordered subsequence %v", growth, wantGrowth)
+	}
+
+	completed := done.Inference.Current.Generation
+	if completed == nil {
+		t.Fatal("expected completed generation snapshot")
+	}
+	wantFinal := wantGrowth[len(wantGrowth)-1]
+	if completed.Output != wantFinal {
+		t.Fatalf("completed Generation.Output = %q, want %q", completed.Output, wantFinal)
+	}
+	if last := lastOutput(growth); last != wantFinal {
+		t.Fatalf("final in-progress output = %q, want parity with completed %q", last, wantFinal)
+	}
+}
+
 // TestCapturePipeline_PairsAcrossSwappedTuples asserts that a request and its
 // response are paired even though the OS delivers them with SWAPPED 4-tuples
 // (request: client→server; response: server→client). This models real WinDivert
@@ -463,42 +572,8 @@ func TestCapturePipeline_PopulatesGeneration(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			baseTime := time.Now()
-			tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
-			segments := []capture.Segment{
-				{Tuple: tuple, Dir: capture.DirToServer, Payload: tc.request, SeqNo: 0, At: baseTime},
-				{Tuple: tuple, Dir: capture.DirFromServer, Payload: tc.response, SeqNo: 0, At: baseTime.Add(time.Millisecond)},
-			}
-
-			var emitted []dashboard.Snapshot
-			emitFn := func(ctx context.Context, event string, payload ...any) {
-				if event == dashboard.TopicDashboardSnapshot {
-					if snap, ok := payload[0].(dashboard.Snapshot); ok {
-						emitted = append(emitted, snap)
-					}
-				}
-			}
-
-			app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			app.Startup(ctx)
-
-			done, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
-				cur := snap.Inference.Current
-				return cur.Endpoint == tc.endpoint && cur.Status == inference.PhaseCompleted
-			})
-			if !found {
-				t.Fatalf("no completed %s inference; got %d snapshots", tc.endpoint, len(emitted))
-			}
-
-			gen := done.Inference.Current.Generation
-			if gen == nil {
-				t.Fatal("expected Generation to be populated on completion")
-			}
-			if gen.Output != "hi" {
-				t.Errorf("Generation.Output: got %q, want %q", gen.Output, "hi")
-			}
+			done := runGenerationPipelineTest(t, tc.endpoint, tc.request, tc.response)
+			assertPopulatedGeneration(t, done)
 		})
 	}
 }
@@ -536,60 +611,8 @@ func TestCapturePipeline_LiveGenerationGrowsDuringStreaming(t *testing.T) {
 
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			baseTime := time.Now()
-			tuple := capture.FourTuple{SrcIP: "127.0.0.1", DstIP: "127.0.0.1", SrcPort: 54321, DstPort: 11434}
-			segments := []capture.Segment{{Tuple: tuple, Dir: capture.DirToServer, Payload: tt.request, SeqNo: 0, At: baseTime}}
-
-			seqNo := uint32(0)
-			for i, part := range tt.responseParts {
-				segments = append(segments, capture.Segment{
-					Tuple:   tuple,
-					Dir:     capture.DirFromServer,
-					Payload: part,
-					SeqNo:   seqNo,
-					At:      baseTime.Add(time.Duration(i+1) * 10 * time.Millisecond),
-				})
-				seqNo += uint32(len(part))
-			}
-
-			var emitted []dashboard.Snapshot
-			emitFn := func(ctx context.Context, event string, payload ...any) {
-				if event == dashboard.TopicDashboardSnapshot {
-					if snap, ok := payload[0].(dashboard.Snapshot); ok {
-						emitted = append(emitted, snap)
-					}
-				}
-			}
-
-			app := newTestAppWithEmitter(capture.NewFakeSource(segments), emitFn)
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			app.Startup(ctx)
-
-			done, found := waitForSnapshot(&emitted, 1500*time.Millisecond, func(snap dashboard.Snapshot) bool {
-				cur := snap.Inference.Current
-				return cur.Endpoint == tt.endpoint && cur.Status == inference.PhaseCompleted
-			})
-			if !found {
-				t.Fatalf("no completed %s inference; got %d snapshots", tt.endpoint, len(emitted))
-			}
-
-			growth := streamedGenerationOutputs(emitted, tt.endpoint)
-			if !containsOrderedOutputs(growth, tt.wantGrowth) {
-				t.Fatalf("in-progress generation growth = %v, want ordered subsequence %v", growth, tt.wantGrowth)
-			}
-
-			completed := done.Inference.Current.Generation
-			if completed == nil {
-				t.Fatal("expected completed generation snapshot")
-			}
-			wantFinal := tt.wantGrowth[len(tt.wantGrowth)-1]
-			if completed.Output != wantFinal {
-				t.Fatalf("completed Generation.Output = %q, want %q", completed.Output, wantFinal)
-			}
-			if last := lastOutput(growth); last != wantFinal {
-				t.Fatalf("final in-progress output = %q, want parity with completed %q", last, wantFinal)
-			}
+			done, emitted := runStreamingGenerationPipelineTest(t, tt.endpoint, tt.request, tt.responseParts)
+			assertStreamingGenerationGrowth(t, emitted, tt.endpoint, done, tt.wantGrowth)
 		})
 	}
 }
@@ -917,6 +940,28 @@ func newTestAppWithEmitterAndSource(src capture.CaptureSource, emitter wailsEmit
 		CaptureSource: src,
 		wailsEmitter:  emitter,
 	})
+}
+
+// pipelineSnapshotCollector captures dashboard snapshots emitted by the capture
+// pipeline under test.
+type pipelineSnapshotCollector struct {
+	snapshots []dashboard.Snapshot
+}
+
+// emit is a runtimeEventEmitter implementation that appends dashboard snapshots
+// to the collector's slice.
+func (c *pipelineSnapshotCollector) emit(ctx context.Context, event string, payload ...any) {
+	if event != dashboard.TopicDashboardSnapshot {
+		return
+	}
+	if snap, ok := payload[0].(dashboard.Snapshot); ok {
+		c.snapshots = append(c.snapshots, snap)
+	}
+}
+
+// newPipelineSnapshotCollector returns an initialized collector and its emit method.
+func newPipelineSnapshotCollector() *pipelineSnapshotCollector {
+	return &pipelineSnapshotCollector{}
 }
 
 // trackingCaptureSource wraps a CaptureSource and records whether Close was called.

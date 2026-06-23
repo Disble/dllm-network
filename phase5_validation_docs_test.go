@@ -53,7 +53,7 @@ func TestPhase5RootValidationScripts(t *testing.T) {
 	for _, expected := range []string{
 		"['list', './...']",
 		"frontend/node_modules",
-		"execFileSync('go', ['test'",
+		"execFileSync(GO_PATH, ['test'",
 	} {
 		if !strings.Contains(string(scriptContent), expected) {
 			t.Fatalf("expected go-test-project.mjs to contain %q", expected)
@@ -66,7 +66,7 @@ func TestPhase5RootValidationScripts(t *testing.T) {
 	}
 
 	for _, expected := range []string{
-		"execFileSync('golangci-lint', ['run', './...']",
+		"execFileSync(GOLANGCI_LINT_PATH, ['run', './...']",
 	} {
 		if !strings.Contains(string(lintScriptContent), expected) {
 			t.Fatalf("expected go-lint-project.mjs to contain %q", expected)
@@ -80,7 +80,7 @@ func TestPhase5RootValidationScripts(t *testing.T) {
 
 	for _, expected := range []string{
 		"process.argv[2]",
-		"execFileSync('bun', ['run', scriptName]",
+		"execFileSync(BUN_PATH, ['run', scriptName]",
 		"'../frontend'",
 	} {
 		if !strings.Contains(string(frontendRunnerContent), expected) {

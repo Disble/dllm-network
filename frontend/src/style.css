@@ -214,8 +214,6 @@ body {
 
 .dashboard-root .dashboard-shell {
   min-height: auto;
-  padding: 0;
-  background: none;
   min-width: 0;
   height: 100%;
   padding: 16px;
@@ -609,11 +607,16 @@ body {
   background: var(--row-selected);
   box-shadow: inset 3px 0 0 var(--accent);
 }
+.inference-table__row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .inference-table__cell {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 0;
 }
 .inference-table__cell--model {
   font-weight: 600;

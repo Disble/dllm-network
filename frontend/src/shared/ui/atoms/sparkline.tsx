@@ -8,7 +8,7 @@ import type { SparklineProps } from './sparkline.types';
  * No chart library dependency — hand-rolled path.
  * Renders no polyline when fewer than 2 values are supplied.
  */
-export function Sparkline({ values, width = SPARKLINE_DEFAULT_WIDTH, height = SPARKLINE_DEFAULT_HEIGHT, ariaLabel }: Readonly<SparklineProps>) {
+export function Sparkline({ values, width = SPARKLINE_DEFAULT_WIDTH, height = SPARKLINE_DEFAULT_HEIGHT, ariaLabel = 'Sparkline chart' }: Readonly<SparklineProps>) {
   const points = buildPolylinePoints(values, width, height);
 
   return (
@@ -17,8 +17,7 @@ export function Sparkline({ values, width = SPARKLINE_DEFAULT_WIDTH, height = SP
       height={height}
       viewBox={`0 0 ${width} ${height}`}
       aria-label={ariaLabel}
-      role={ariaLabel === undefined ? undefined : 'img'}
-      aria-hidden={ariaLabel === undefined ? true : undefined}
+      role="img"
     >
       {points !== null && (
         <polyline

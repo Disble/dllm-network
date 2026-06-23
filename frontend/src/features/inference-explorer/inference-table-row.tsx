@@ -1,3 +1,5 @@
+import type { KeyboardEvent } from 'react';
+
 import { formatClockTime } from '../../shared/helpers/formatters.helpers';
 import { deriveDisplayTiming } from '../../shared/helpers/live-timing.helpers';
 import { LatencyPill } from '../../shared/ui/atoms/latency-pill';
@@ -19,26 +21,35 @@ export function InferenceTableRow({ event, rowId, isSelected, maxLatencyMS, nowM
   const perSec = event.tokens?.perSec ?? null;
   const { loadMS, evalMS, totalMS: latencyMS } = deriveDisplayTiming(event, nowMS);
 
+  function handleKeyDown(event: KeyboardEvent) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onSelect(rowId);
+    }
+  }
+
+  const rowClass = `inference-table__row${isSelected ? ' inference-table__row--selected' : ''}`;
+
   return (
-    <button
-      type="button"
-      role="row"
+    <tr
       aria-selected={isSelected}
-      className={`inference-table__row${isSelected ? ' inference-table__row--selected' : ''}`}
+      className={rowClass}
       style={style}
+      tabIndex={0}
       onClick={() => onSelect(rowId)}
+      onKeyDown={handleKeyDown}
     >
-      <span className="inference-table__cell inference-table__cell--model" title={event.model}>{event.model}</span>
-      <span className="inference-table__cell inference-table__cell--endpoint" title={event.endpoint}>{event.endpoint}</span>
-      <span className="inference-table__cell inference-table__cell--method">{event.method}</span>
-      <span className="inference-table__cell inference-table__cell--status">{statusLabel}</span>
-      <span className="inference-table__cell inference-table__cell--code"><StatusCodePill statusCode={event.statusCode ?? null} /></span>
-      <span className="inference-table__cell inference-table__cell--rate"><TokenRateBadge perSec={perSec} /></span>
-      <span className="inference-table__cell inference-table__cell--latency"><LatencyPill latencyMS={latencyMS} /></span>
-      <span className="inference-table__cell inference-table__cell--time">{formatClockTime(event.at)}</span>
-      <span className="inference-table__cell inference-table__cell--waterfall">
+      <td className="inference-table__cell inference-table__cell--model" title={event.model}>{event.model}</td>
+      <td className="inference-table__cell inference-table__cell--endpoint" title={event.endpoint}>{event.endpoint}</td>
+      <td className="inference-table__cell inference-table__cell--method">{event.method}</td>
+      <td className="inference-table__cell inference-table__cell--status">{statusLabel}</td>
+      <td className="inference-table__cell inference-table__cell--code"><StatusCodePill statusCode={event.statusCode ?? null} /></td>
+      <td className="inference-table__cell inference-table__cell--rate"><TokenRateBadge perSec={perSec} /></td>
+      <td className="inference-table__cell inference-table__cell--latency"><LatencyPill latencyMS={latencyMS} /></td>
+      <td className="inference-table__cell inference-table__cell--time">{formatClockTime(event.at)}</td>
+      <td className="inference-table__cell inference-table__cell--waterfall">
         <WaterfallBar loadMS={loadMS} evalMS={evalMS} totalMS={latencyMS} maxMS={maxLatencyMS} />
-      </span>
-    </button>
+      </td>
+    </tr>
   );
 }

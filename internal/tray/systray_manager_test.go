@@ -15,7 +15,7 @@ func TestSystrayManagerStartConfiguresMenuAndInvokesCallbacks(t *testing.T) {
 	var tooltip string
 	items := map[string]*fakeMenuItem{}
 
-	addMenuItem = func(title, _ string) menuItem {
+	addMenuItem = func(title, _ string) menuClicker {
 		item := newFakeMenuItem()
 		titles = append(titles, title)
 		items[title] = item
@@ -69,7 +69,7 @@ func TestSystrayManagerStopIsIdempotent(t *testing.T) {
 	quitCalls := 0
 	quit = func() { quitCalls++ }
 	runWithExternalLoop = func(onReady, _ func()) { onReady() }
-	addMenuItem = func(string, string) menuItem { return newFakeMenuItem() }
+	addMenuItem = func(string, string) menuClicker { return newFakeMenuItem() }
 
 	manager := NewSystrayManager()
 	if err := manager.Start(Config{Icon: []byte{0x01}}); err != nil {
@@ -99,7 +99,7 @@ func stubSystrayPrimitives() func() {
 	runWithExternalLoop = func(onReady, _ func()) { onReady() }
 	setIcon = func([]byte) {}
 	setTooltip = func(string) {}
-	addMenuItem = func(string, string) menuItem { return nil }
+	addMenuItem = func(string, string) menuClicker { return nil }
 	quit = func() {}
 
 	return func() {

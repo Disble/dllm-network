@@ -120,11 +120,14 @@ func (recent *Recent) RecordInferenceCompletion(inf inference.Inference) {
 // bounded terminal-event feed. The feed holds all TERMINAL inference events;
 // a cancellation is terminal too (the request will never complete). Callers
 // should only call this once per connection, when an in-progress request is
-// evicted without ever completing.
+// evicted without ever completing. The event is always stored with
+// Status == PhaseCancelled so the projection layer cannot mistake it for a
+// successful completion.
 func (recent *Recent) RecordInferenceCancellation(inf inference.Inference) {
 	recent.mu.Lock()
 	defer recent.mu.Unlock()
 
+	inf.Status = inference.PhaseCancelled
 	recent.recordInferenceEventLocked(inf)
 }
 

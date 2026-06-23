@@ -10,7 +10,7 @@ func init() {
 	}
 	setIcon = systray.SetIcon
 	setTooltip = systray.SetTooltip
-	addMenuItem = func(title, tooltip string) menuItem {
+	addMenuItem = func(title, tooltip string) menuClicker {
 		return systrayMenuItem{item: systray.AddMenuItem(title, tooltip)}
 	}
 	quit = systray.Quit

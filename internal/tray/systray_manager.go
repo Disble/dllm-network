@@ -2,7 +2,10 @@ package tray
 
 import "sync"
 
-type menuItem interface {
+// menuClicker is the contract for a tray menu item that emits a signal each
+// time the user clicks it. The real platform binding (systrayBindings) and the
+// test fakes both implement this interface.
+type menuClicker interface {
 	Clicked() <-chan struct{}
 }
 
@@ -18,7 +21,7 @@ var (
 	setTooltip func(string) = func(string) {
 		// no-op seam stub; real implementation provided by platform binding.
 	}
-	addMenuItem func(string, string) menuItem = func(string, string) menuItem {
+	addMenuItem func(string, string) menuClicker = func(string, string) menuClicker {
 		// no-op seam stub; real implementation provided by platform binding.
 		return nil
 	}
@@ -58,7 +61,11 @@ func (m *SystrayManager) Start(config Config) error {
 
 		go listenMenuItem(openItem, config.OnOpen)
 		go listenMenuItem(exitItem, config.OnExit)
-	}, func() {})
+	}, func() {
+		// Intentionally empty: this manager uses Stop() and the quit() seam for
+		// teardown. runWithExternalLoop's onExit callback is not required in
+		// external-loop mode because the caller controls the lifetime.
+	})
 
 	return nil
 }
@@ -79,7 +86,7 @@ func (m *SystrayManager) Stop() error {
 	return nil
 }
 
-func listenMenuItem(item menuItem, callback func()) {
+func listenMenuItem(item menuClicker, callback func()) {
 	if item == nil || callback == nil {
 		return
 	}

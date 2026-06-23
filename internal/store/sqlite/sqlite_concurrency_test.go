@@ -44,25 +44,45 @@ func TestWAL_WriterAndReadOnlyReader_NoBusyErrors(t *testing.T) {
 	base := time.Now().UTC()
 
 	writeErrs := make(chan error, 1)
-	go func() {
-		defer close(writeErrs)
-		for i := 0; i < totalRows; i++ {
-			inf := inference.Inference{
-				ID:       "inf-concurrency-" + time.Duration(i).String(),
-				At:       base.Add(time.Duration(i) * time.Millisecond),
-				Endpoint: "/api/generate",
-				Method:   "POST",
-				Model:    "llama3:8b",
-				Status:   inference.PhaseCompleted,
-			}
-			if err := writer.Save(ctx, []inference.Inference{inf}); err != nil {
-				writeErrs <- err
-				return
-			}
-			time.Sleep(2 * time.Millisecond)
-		}
-	}()
+	go writeInferenceRows(ctx, t, writer, totalRows, base, writeErrs)
 
+	lastCount := pollRowCount(t, reader, totalRows)
+
+	if err := <-writeErrs; err != nil {
+		t.Fatalf("writer goroutine: %v", err)
+	}
+	if lastCount < totalRows {
+		t.Fatalf("expected to observe %d rows from the read-only side, last saw %d", totalRows, lastCount)
+	}
+}
+
+// writeInferenceRows writes totalRows inference rows to writer, sleeping briefly
+// between writes. The first error, if any, is sent to writeErrs before the
+// channel is closed.
+func writeInferenceRows(ctx context.Context, t *testing.T, writer *Store, totalRows int, base time.Time, writeErrs chan<- error) {
+	t.Helper()
+	defer close(writeErrs)
+	for i := 0; i < totalRows; i++ {
+		inf := inference.Inference{
+			ID:       "inf-concurrency-" + time.Duration(i).String(),
+			At:       base.Add(time.Duration(i) * time.Millisecond),
+			Endpoint: "/api/generate",
+			Method:   "POST",
+			Model:    "llama3:8b",
+			Status:   inference.PhaseCompleted,
+		}
+		if err := writer.Save(ctx, []inference.Inference{inf}); err != nil {
+			writeErrs <- err
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
+// pollRowCount polls reader for its inference count until it reaches totalRows
+// or the deadline expires. It returns the last observed count.
+func pollRowCount(t *testing.T, reader *Store, totalRows int) int {
+	t.Helper()
 	lastCount := -1
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -83,13 +103,7 @@ func TestWAL_WriterAndReadOnlyReader_NoBusyErrors(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-
-	if err := <-writeErrs; err != nil {
-		t.Fatalf("writer goroutine: %v", err)
-	}
-	if lastCount < totalRows {
-		t.Fatalf("expected to observe %d rows from the read-only side, last saw %d", totalRows, lastCount)
-	}
+	return lastCount
 }
 
 // isBusyErr matches on the driver's error text rather than a sentinel error

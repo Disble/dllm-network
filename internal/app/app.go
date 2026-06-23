@@ -83,7 +83,7 @@ type Status struct {
 // App owns the Wails lifecycle hooks needed for the runtime shell slice.
 type App struct {
 	mu            sync.RWMutex
-	ctx           context.Context
+	ctx           context.Context // NOSONAR — Wails lifecycle stores context as field for shutdown hooks
 	window        Window
 	orchestrator  Orchestrator
 	trayManager   tray.TrayManager

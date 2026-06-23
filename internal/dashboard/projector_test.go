@@ -155,14 +155,18 @@ func TestProjectorFallsBackToRecentActivityWhenCurrentActivityIsMissing(t *testi
 }
 
 // snapshotJSONDecode mirrors the frontend-facing JSON shape used by
+// snapshotEvidence holds the evidence field for a single inference snapshot,
+// extracted to avoid unnamed structs inside snapshotJSONDecode.
+type snapshotEvidence struct {
+	Evidence []activity.Evidence `json:"evidence"`
+}
+
 // TestProjectorSnapshotJSONUsesArraysForFrontendCollections to assert that
 // collection fields marshal as arrays (not null).
 type snapshotJSONDecode struct {
 	Inferred struct {
-		Current struct {
-			Evidence []activity.Evidence `json:"evidence"`
-		} `json:"current"`
-		Recent []activity.Event `json:"recent"`
+		Current snapshotEvidence `json:"current"`
+		Recent  []activity.Event `json:"recent"`
 	} `json:"inferred"`
 	Recent struct {
 		ConfirmedModels []RecentConfirmedModel `json:"confirmedModels"`

@@ -43,6 +43,9 @@ func (s *Store) Stats(ctx context.Context, filter store.Filter) (store.Stats, er
 }
 
 func (s *Store) countMatching(ctx context.Context, whereClause string, args []any) (int, error) {
+	if err := validateClauseColumns(whereClause); err != nil {
+		return 0, err
+	}
 	var count int
 	q := "SELECT COUNT(*) FROM inferences" + whereClause
 	if err := s.db.QueryRowContext(ctx, q, args...).Scan(&count); err != nil {
@@ -56,6 +59,9 @@ func (s *Store) countMatching(ctx context.Context, whereClause string, args []an
 // Tokens != nil). Rows without token stats are excluded from the
 // percentile inputs but still counted in countMatching/countByModel.
 func (s *Store) fetchTokenMetrics(ctx context.Context, whereClause string, args []any) ([]float64, []float64, error) {
+	if err := validateClauseColumns(whereClause); err != nil {
+		return nil, nil, err
+	}
 	cond := "per_sec IS NOT NULL"
 	q := "SELECT per_sec, latency_ms FROM inferences"
 	if whereClause == "" {
@@ -87,6 +93,9 @@ func (s *Store) fetchTokenMetrics(ctx context.Context, whereClause string, args 
 }
 
 func (s *Store) countByModel(ctx context.Context, whereClause string, args []any) ([]store.ModelStats, error) {
+	if err := validateClauseColumns(whereClause); err != nil {
+		return nil, err
+	}
 	q := "SELECT model, COUNT(*) FROM inferences" + whereClause + " GROUP BY model"
 
 	rows, err := s.db.QueryContext(ctx, q, args...)

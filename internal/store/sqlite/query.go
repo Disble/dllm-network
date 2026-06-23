@@ -19,9 +19,11 @@ import (
 // matches returns empty, not error").
 func (s *Store) Query(ctx context.Context, filter store.Filter) ([]inference.Inference, error) {
 	clause, args := whereClause(filter)
+	if err := validateClauseColumns(clause); err != nil {
+		return nil, err
+	}
 
-	q := fmt.Sprintf(`SELECT id, at, model, endpoint, method, status, status_code,
-		streaming, prompt_size, detail FROM inferences%s ORDER BY at DESC, id DESC`, clause)
+	q := "SELECT id, at, model, endpoint, method, status, status_code,\n\t\tstreaming, prompt_size, detail FROM inferences" + clause + " ORDER BY at DESC, id DESC"
 	if filter.Limit > 0 {
 		q += " LIMIT ?"
 		args = append(args, filter.Limit)
@@ -98,8 +100,11 @@ func (s *Store) SearchInferences(ctx context.Context, query store.SearchInferenc
 	clause = appendWhereClause(clause, cursorClause)
 	args = append(args, cursorArgs...)
 
-	q := fmt.Sprintf(`SELECT id, at, model, endpoint, method, status, status_code,
-		streaming, prompt_size FROM inferences%s ORDER BY at DESC, id DESC LIMIT ?`, clause)
+	if err := validateClauseColumns(clause); err != nil {
+		return store.SearchInferencesResult{}, err
+	}
+
+	q := "SELECT id, at, model, endpoint, method, status, status_code,\n\t\tstreaming, prompt_size FROM inferences" + clause + " ORDER BY at DESC, id DESC LIMIT ?"
 	rows, err := s.db.QueryContext(ctx, q, append(args, query.Limit+1)...)
 	if err != nil {
 		return store.SearchInferencesResult{}, fmt.Errorf("sqlite: search inferences: %w", err)
@@ -151,11 +156,20 @@ func (s *Store) resolveCounts(ctx context.Context) (store.InferenceCounts, error
 	return store.InferenceCounts{Total: total}, nil
 }
 
+// facetQueries maps allowed facet columns to their fully static SQL. Using a
+// map instead of fmt.Sprintf guarantees only allowlisted identifiers reach
+// the database.
+var facetQueries = map[string]string{
+	"model":    `SELECT model, COUNT(*) FROM inferences GROUP BY model ORDER BY COUNT(*) DESC, model ASC`,
+	"endpoint": `SELECT endpoint, COUNT(*) FROM inferences GROUP BY endpoint ORDER BY COUNT(*) DESC, endpoint ASC`,
+}
+
 func (s *Store) resolveFacetCounts(ctx context.Context, column string) ([]store.FacetCount, error) {
-	if column != "model" && column != "endpoint" {
+	q, ok := facetQueries[column]
+	if !ok {
 		return nil, fmt.Errorf("sqlite: invalid facet column %q", column)
 	}
-	rows, err := s.db.QueryContext(ctx, fmt.Sprintf(`SELECT %s, COUNT(*) FROM inferences GROUP BY %s ORDER BY COUNT(*) DESC, %s ASC`, column, column, column))
+	rows, err := s.db.QueryContext(ctx, q)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: resolve %s: %w", column, err)
 	}

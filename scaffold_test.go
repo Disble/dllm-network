@@ -35,20 +35,27 @@ func TestPhase1WailsScaffoldFiles(t *testing.T) {
 
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			content := mustReadFile(t, tt.path)
-
-			for _, expected := range tt.expects {
-				if !strings.Contains(content, expected) {
-					t.Fatalf("expected %s to contain %q", tt.path, expected)
-				}
-			}
-
-			for _, rejected := range tt.rejects {
-				if strings.Contains(content, rejected) {
-					t.Fatalf("expected %s to exclude %q", tt.path, rejected)
-				}
-			}
+			assertFileContainsAndExcludes(t, tt.path, tt.expects, tt.rejects)
 		})
+	}
+}
+
+// assertFileContainsAndExcludes verifies path contains every expected substring
+// and excludes every rejected substring.
+func assertFileContainsAndExcludes(t *testing.T, path string, expects, rejects []string) {
+	t.Helper()
+	content := mustReadFile(t, path)
+
+	for _, expected := range expects {
+		if !strings.Contains(content, expected) {
+			t.Fatalf("expected %s to contain %q", path, expected)
+		}
+	}
+
+	for _, rejected := range rejects {
+		if strings.Contains(content, rejected) {
+			t.Fatalf("expected %s to exclude %q", path, rejected)
+		}
 	}
 }
 
@@ -84,39 +91,38 @@ func TestPhase1FrontendPackageScripts(t *testing.T) {
 		{name: "validate", value: "bun run lint && bun run typecheck"},
 		{name: "doctor:react", value: "bunx react-doctor@0.5.1 --verbose --no-telemetry"},
 	}
+	assertPackageScriptValues(t, manifest.Scripts, scriptCases)
 
-	for _, tt := range scriptCases {
+	assertDependenciesDeclared(t, manifest.Dependencies, []string{"react", "react-dom"}, "react runtime")
+	assertDependenciesDeclared(t, manifest.DevDependencies, []string{"eslint", "eslint-plugin-import-x", "eslint-plugin-react-doctor", "typescript", "vite"}, "lint toolchain")
+}
+
+// assertPackageScriptValues verifies each expected frontend package.json script
+// name/value pair in scripts.
+func assertPackageScriptValues(t *testing.T, scripts map[string]string, cases []struct {
+	name  string
+	value string
+}) {
+	t.Helper()
+	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			if manifest.Scripts[tt.name] != tt.value {
-				t.Fatalf("expected script %s to be %q, got %q", tt.name, tt.value, manifest.Scripts[tt.name])
+			if scripts[tt.name] != tt.value {
+				t.Fatalf("expected script %s to be %q, got %q", tt.name, tt.value, scripts[tt.name])
 			}
 		})
 	}
+}
 
-	dependencyCases := []struct {
-		name string
-		deps map[string]string
-	}{
-		{name: "react runtime", deps: manifest.Dependencies},
-		{name: "lint toolchain", deps: manifest.DevDependencies},
-	}
-
-	for _, tt := range dependencyCases {
-		t.Run(tt.name, func(t *testing.T) {
-			required := []string{}
-			if tt.name == "react runtime" {
-				required = []string{"react", "react-dom"}
-			} else {
-				required = []string{"eslint", "eslint-plugin-import-x", "eslint-plugin-react-doctor", "typescript", "vite"}
+// assertDependenciesDeclared verifies deps contains every name in required.
+func assertDependenciesDeclared(t *testing.T, deps map[string]string, required []string, depName string) {
+	t.Helper()
+	t.Run(depName, func(t *testing.T) {
+		for _, name := range required {
+			if deps[name] == "" {
+				t.Fatalf("expected dependency %s to be declared in %s", name, depName)
 			}
-
-			for _, name := range required {
-				if tt.deps[name] == "" {
-					t.Fatalf("expected dependency %s to be declared in %s", name, tt.name)
-				}
-			}
-		})
-	}
+		}
+	})
 }
 
 func TestPhase1FrontendArchitectureConfig(t *testing.T) {
@@ -154,19 +160,7 @@ func TestPhase1FrontendArchitectureConfig(t *testing.T) {
 
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			content := mustReadFile(t, tt.path)
-
-			for _, expected := range tt.expects {
-				if !strings.Contains(content, expected) {
-					t.Fatalf("expected %s to contain %q", tt.path, expected)
-				}
-			}
-
-			for _, rejected := range tt.rejects {
-				if strings.Contains(content, rejected) {
-					t.Fatalf("expected %s to exclude %q", tt.path, rejected)
-				}
-			}
+			assertFileContainsAndExcludes(t, tt.path, tt.expects, tt.rejects)
 		})
 	}
 }

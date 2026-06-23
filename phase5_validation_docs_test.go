@@ -10,21 +10,9 @@ import (
 func TestPhase5RootValidationScripts(t *testing.T) {
 	t.Parallel()
 
-	type packageManifest struct {
-		Scripts map[string]string `json:"scripts"`
-	}
+	manifest := readPackageManifest(t)
 
-	content, err := os.ReadFile("package.json")
-	if err != nil {
-		t.Fatalf("read package.json: %v", err)
-	}
-
-	var manifest packageManifest
-	if err := json.Unmarshal(content, &manifest); err != nil {
-		t.Fatalf("unmarshal package.json: %v", err)
-	}
-
-	testCases := []struct {
+	scriptCases := []struct {
 		name  string
 		value string
 	}{
@@ -36,55 +24,71 @@ func TestPhase5RootValidationScripts(t *testing.T) {
 		{name: "validate", value: "bun run test:go && bun run lint:go && bun run scripts/frontend-run.mjs lint && bun run scripts/frontend-run.mjs typecheck && bun run scripts/frontend-run.mjs test && bun run scripts/frontend-run.mjs doctor:react"},
 		{name: "doctor:react", value: "bun run scripts/frontend-run.mjs doctor:react"},
 	}
+	assertScriptValues(t, manifest.Scripts, scriptCases)
 
-	for _, tt := range testCases {
-		t.Run(tt.name, func(t *testing.T) {
-			if manifest.Scripts[tt.name] != tt.value {
-				t.Fatalf("expected script %s to be %q, got %q", tt.name, tt.value, manifest.Scripts[tt.name])
-			}
-		})
-	}
-
-	scriptContent, err := os.ReadFile("scripts/go-test-project.mjs")
-	if err != nil {
-		t.Fatalf("read scripts/go-test-project.mjs: %v", err)
-	}
-
-	for _, expected := range []string{
+	assertFileContainsAll(t, "scripts/go-test-project.mjs", []string{
 		"['list', './...']",
 		"frontend/node_modules",
 		"execFileSync(GO_PATH, ['test'",
-	} {
-		if !strings.Contains(string(scriptContent), expected) {
-			t.Fatalf("expected go-test-project.mjs to contain %q", expected)
-		}
-	}
+	})
 
-	lintScriptContent, err := os.ReadFile("scripts/go-lint-project.mjs")
-	if err != nil {
-		t.Fatalf("read scripts/go-lint-project.mjs: %v", err)
-	}
-
-	for _, expected := range []string{
+	assertFileContainsAll(t, "scripts/go-lint-project.mjs", []string{
 		"execFileSync(GOLANGCI_LINT_PATH, ['run', './...']",
-	} {
-		if !strings.Contains(string(lintScriptContent), expected) {
-			t.Fatalf("expected go-lint-project.mjs to contain %q", expected)
-		}
-	}
+	})
 
-	frontendRunnerContent, err := os.ReadFile("scripts/frontend-run.mjs")
-	if err != nil {
-		t.Fatalf("read scripts/frontend-run.mjs: %v", err)
-	}
-
-	for _, expected := range []string{
+	assertFileContainsAll(t, "scripts/frontend-run.mjs", []string{
 		"process.argv[2]",
 		"execFileSync(BUN_PATH, ['run', scriptName]",
 		"'../frontend'",
-	} {
-		if !strings.Contains(string(frontendRunnerContent), expected) {
-			t.Fatalf("expected frontend-run.mjs to contain %q", expected)
+	})
+}
+
+// packageManifest is a minimal representation of package.json for validation.
+type packageManifest struct {
+	Scripts map[string]string `json:"scripts"`
+}
+
+// readPackageManifest reads and parses the root package.json.
+func readPackageManifest(t *testing.T) packageManifest {
+	t.Helper()
+	content, err := os.ReadFile("package.json")
+	if err != nil {
+		t.Fatalf("read package.json: %v", err)
+	}
+
+	var manifest packageManifest
+	if err := json.Unmarshal(content, &manifest); err != nil {
+		t.Fatalf("unmarshal package.json: %v", err)
+	}
+	return manifest
+}
+
+// assertScriptValues verifies each expected script name/value pair in scripts.
+func assertScriptValues(t *testing.T, scripts map[string]string, cases []struct {
+	name  string
+	value string
+}) {
+	t.Helper()
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if scripts[tt.name] != tt.value {
+				t.Fatalf("expected script %s to be %q, got %q", tt.name, tt.value, scripts[tt.name])
+			}
+		})
+	}
+}
+
+// assertFileContainsAll verifies path contains every expected substring.
+func assertFileContainsAll(t *testing.T, path string, expected []string) {
+	t.Helper()
+	scriptContent, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	for _, fragment := range expected {
+		if !strings.Contains(string(scriptContent), fragment) {
+			t.Fatalf("expected %s to contain %q", path, fragment)
 		}
 	}
 }
@@ -148,17 +152,7 @@ func TestPhase5DocumentationCoversPassiveLimitsAndValidation(t *testing.T) {
 
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			content, err := os.ReadFile(tt.path)
-			if err != nil {
-				t.Fatalf("read %s: %v", tt.path, err)
-			}
-
-			text := string(content)
-			for _, expected := range tt.expects {
-				if !strings.Contains(text, expected) {
-					t.Fatalf("expected %s to contain %q", tt.path, expected)
-				}
-			}
+			assertFileContainsAll(t, tt.path, tt.expects)
 		})
 	}
 }
